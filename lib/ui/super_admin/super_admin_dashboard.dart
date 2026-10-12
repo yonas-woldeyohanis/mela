@@ -1,6 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/config.dart';
 import '../../core/friendly_error.dart';
 import '../../core/theme.dart';
@@ -459,6 +460,39 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
     );
   }
 
+  Future<String?> _signupOwnerAccount(String email, String pass, String name) async {
+    final client = HttpClient();
+    try {
+      final req = await client.postUrl(Uri.parse('${AppConfig.supabaseUrl}/auth/v1/signup'));
+      req.headers.set('apikey', AppConfig.supabaseAnonKey);
+      req.headers.set('Content-Type', 'application/json');
+      req.add(utf8.encode(jsonEncode({
+        'email': email,
+        'password': pass,
+        'data': {'full_name': name, 'role': 'owner'},
+      })));
+      final resp = await req.close();
+      final body = await resp.transform(utf8.decoder).join();
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
+        final json = jsonDecode(body);
+        if (json is Map) {
+          final userMap = json['user'] as Map<String, dynamic>?;
+          return (userMap?['id'] as String?) ?? (json['id'] as String?);
+        }
+        return null;
+      } else if (resp.statusCode == 422) {
+        // User is already registered in Auth, proceed to link
+        return null;
+      } else {
+        final json = jsonDecode(body);
+        final msg = json is Map ? (json['msg'] ?? json['message'] ?? 'Signup failed (HTTP ${resp.statusCode})') : 'Signup failed';
+        throw msg.toString();
+      }
+    } finally {
+      client.close();
+    }
+  }
+
   Future<void> _openCreateBusinessDialog(BuildContext context) async {
     final nameCtrl = TextEditingController();
     final ownerNameCtrl = TextEditingController();
@@ -467,115 +501,136 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
     final phoneCtrl = TextEditingController();
     final feeCtrl = TextEditingController(text: '1000');
     bool loading = false;
+    String? dialogError;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Register Hotel / Cafe'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Business Name *', prefixIcon: Icon(Icons.storefront_rounded)),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: ownerNameCtrl,
-                  decoration: const InputDecoration(labelText: 'Owner Full Name *', prefixIcon: Icon(Icons.person_rounded)),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Owner Email (Sign-in) *', prefixIcon: Icon(Icons.email_rounded)),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: passCtrl,
-                  decoration: const InputDecoration(labelText: 'Temporary Password *', prefixIcon: Icon(Icons.lock_rounded)),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Contact Phone', prefixIcon: Icon(Icons.phone_rounded)),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: feeCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Monthly Rent (ETB)', prefixIcon: Icon(Icons.attach_money_rounded)),
-                ),
-              ],
+        builder: (context, setState) {
+          final cs = Theme.of(context).colorScheme;
+          return AlertDialog(
+            title: const Text('Register Hotel / Cafe'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (dialogError != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: cs.errorContainer.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: cs.error.withOpacity(0.5)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline_rounded, color: cs.error, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              dialogError!,
+                              style: TextStyle(color: cs.error, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Business Name *', prefixIcon: Icon(Icons.storefront_rounded)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: ownerNameCtrl,
+                    decoration: const InputDecoration(labelText: 'Owner Full Name *', prefixIcon: Icon(Icons.person_rounded)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Owner Email (Sign-in) *', prefixIcon: Icon(Icons.email_rounded)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: passCtrl,
+                    decoration: const InputDecoration(labelText: 'Temporary Password *', prefixIcon: Icon(Icons.lock_rounded)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Contact Phone', prefixIcon: Icon(Icons.phone_rounded)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: feeCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Monthly Rent (ETB)', prefixIcon: Icon(Icons.attach_money_rounded)),
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: loading ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: loading
-                  ? null
-                  : () async {
-                      if (nameCtrl.text.trim().isEmpty || emailCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) {
-                        FriendlyError.show(context, 'Please fill in all required fields (Business Name, Owner Email, Password).');
-                        return;
-                      }
-                      setState(() => loading = true);
-                      try {
-                        final fee = double.tryParse(feeCtrl.text.trim()) ?? 1000.0;
-                        final email = emailCtrl.text.trim().toLowerCase();
-                        final pass = passCtrl.text.trim();
-                        final ownerName = ownerNameCtrl.text.trim().isNotEmpty ? ownerNameCtrl.text.trim() : 'Owner';
-
-                        String? ownerUid;
-                        try {
-                          final authClient = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey);
-                          final authRes = await authClient.auth.signUp(
-                            email: email,
-                            password: pass,
-                            data: {'full_name': ownerName, 'role': 'owner'},
-                          );
-                          ownerUid = authRes.user?.id;
-                        } catch (authErr) {
-                          final msg = authErr.toString().toLowerCase();
-                          if (!msg.contains('already registered') && !msg.contains('user_already_exists')) {
-                            rethrow;
-                          }
+            actions: [
+              TextButton(onPressed: loading ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: loading
+                    ? null
+                    : () async {
+                        if (nameCtrl.text.trim().isEmpty || emailCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) {
+                          setState(() => dialogError = 'Please fill in Business Name, Owner Email, and Password.');
+                          return;
                         }
-
-                        await sb.rpc('super_admin_create_business', params: {
-                          'p_business_name': nameCtrl.text.trim(),
-                          'p_owner_id': ownerUid,
-                          'p_owner_email': email,
-                          'p_owner_name': ownerName,
-                          'p_temporary_password': pass,
-                          'p_contact_phone': phoneCtrl.text.trim(),
-                          'p_subscription_fee': fee,
-                          'p_duration_days': 30,
+                        setState(() {
+                          loading = true;
+                          dialogError = null;
                         });
-                        ref.invalidate(tenantsProvider);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        if (context.mounted) {
-                          FriendlyError.showSuccess(
-                            context,
-                            'Business "${nameCtrl.text.trim()}" onboarded successfully!',
-                          );
+                        try {
+                          final fee = double.tryParse(feeCtrl.text.trim()) ?? 1000.0;
+                          final email = emailCtrl.text.trim().toLowerCase();
+                          final pass = passCtrl.text.trim();
+                          final ownerName = ownerNameCtrl.text.trim().isNotEmpty ? ownerNameCtrl.text.trim() : 'Owner';
+
+                          // 1. Provision account via GoTrue HTTP API
+                          final ownerUid = await _signupOwnerAccount(email, pass, ownerName);
+
+                          // 2. Link business and owner in Supabase DB
+                          await sb.rpc('super_admin_create_business', params: {
+                            'p_business_name': nameCtrl.text.trim(),
+                            'p_owner_id': ownerUid,
+                            'p_owner_email': email,
+                            'p_owner_name': ownerName,
+                            'p_temporary_password': pass,
+                            'p_contact_phone': phoneCtrl.text.trim(),
+                            'p_subscription_fee': fee,
+                            'p_duration_days': 30,
+                          });
+
+                          ref.invalidate(tenantsProvider);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (context.mounted) {
+                            FriendlyError.showSuccess(
+                              context,
+                              'Business "${nameCtrl.text.trim()}" onboarded successfully!',
+                            );
+                          }
+                        } catch (e) {
+                          setState(() {
+                            loading = false;
+                            dialogError = FriendlyError.toMessage(e);
+                          });
                         }
-                      } catch (e) {
-                        setState(() => loading = false);
-                        if (context.mounted) {
-                          FriendlyError.show(context, e, title: 'Registration Failed');
-                        }
-                      }
-                    },
-              child: loading
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Register & Provision'),
-            ),
-          ],
-        ),
+                      },
+                child: loading
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Register & Provision'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
