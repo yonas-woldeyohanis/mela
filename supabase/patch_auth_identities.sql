@@ -15,7 +15,7 @@ insert into auth.identities (
   updated_at
 )
 select 
-  u.id::text,
+  gen_random_uuid(),
   u.id,
   jsonb_build_object('sub', u.id::text, 'email', lower(trim(u.email))),
   'email',
@@ -109,7 +109,7 @@ begin
     updated_at
   )
   values (
-    v_user_id::text,
+    gen_random_uuid(),
     v_user_id,
     jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_owner_email))),
     'email',
@@ -191,7 +191,7 @@ begin
       updated_at
     )
     values (
-      v_uid::text,
+      gen_random_uuid(),
       v_uid,
       jsonb_build_object('sub', v_uid::text, 'email', lower(trim(v_email))),
       'email',

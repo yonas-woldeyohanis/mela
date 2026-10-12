@@ -188,7 +188,7 @@ begin
     updated_at
   )
   values (
-    v_user_id::text,
+    gen_random_uuid(),
     v_user_id,
     jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_owner_email))),
     'email',
@@ -344,7 +344,7 @@ begin
       updated_at
     )
     values (
-      v_uid::text,
+      gen_random_uuid(),
       v_uid,
       jsonb_build_object('sub', v_uid::text, 'email', lower(trim(v_email))),
       'email',
@@ -487,7 +487,7 @@ begin
     id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
   )
   values (
-    v_admin_uid::text, v_admin_uid,
+    gen_random_uuid(), v_admin_uid,
     jsonb_build_object('sub', v_admin_uid::text, 'email', 'admin@mela.et'),
     'email', 'admin@mela.et', now(), now(), now()
   )
