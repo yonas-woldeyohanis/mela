@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/config.dart';
 import '../../core/friendly_error.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
@@ -523,11 +525,32 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                       setState(() => loading = true);
                       try {
                         final fee = double.tryParse(feeCtrl.text.trim()) ?? 1000.0;
+                        final email = emailCtrl.text.trim().toLowerCase();
+                        final pass = passCtrl.text.trim();
+                        final ownerName = ownerNameCtrl.text.trim().isNotEmpty ? ownerNameCtrl.text.trim() : 'Owner';
+
+                        String? ownerUid;
+                        try {
+                          final authClient = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey);
+                          final authRes = await authClient.auth.signUp(
+                            email: email,
+                            password: pass,
+                            data: {'full_name': ownerName, 'role': 'owner'},
+                          );
+                          ownerUid = authRes.user?.id;
+                        } catch (authErr) {
+                          final msg = authErr.toString().toLowerCase();
+                          if (!msg.contains('already registered') && !msg.contains('user_already_exists')) {
+                            rethrow;
+                          }
+                        }
+
                         await sb.rpc('super_admin_create_business', params: {
                           'p_business_name': nameCtrl.text.trim(),
-                          'p_owner_email': emailCtrl.text.trim(),
-                          'p_owner_name': ownerNameCtrl.text.trim().isNotEmpty ? ownerNameCtrl.text.trim() : 'Owner',
-                          'p_temporary_password': passCtrl.text.trim(),
+                          'p_owner_id': ownerUid,
+                          'p_owner_email': email,
+                          'p_owner_name': ownerName,
+                          'p_temporary_password': pass,
                           'p_contact_phone': phoneCtrl.text.trim(),
                           'p_subscription_fee': fee,
                           'p_duration_days': 30,

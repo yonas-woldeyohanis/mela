@@ -114,11 +114,12 @@ create or replace function public.super_admin_create_business(
   p_business_name text,
   p_owner_email text,
   p_owner_name text,
-  p_temporary_password text,
+  p_temporary_password text default 'Pass1234',
   p_contact_phone text default null,
   p_subscription_fee numeric default 1000.00,
   p_duration_days integer default 30,
-  p_notes text default null
+  p_notes text default null,
+  p_owner_id uuid default null
 )
 returns jsonb
 language plpgsql
@@ -127,7 +128,7 @@ set search_path = public, auth, extensions
 as $$
 declare
   v_org_id uuid;
-  v_user_id uuid;
+  v_user_id uuid := p_owner_id;
   v_join_code text;
   v_expires_at timestamptz;
 begin
@@ -142,65 +143,70 @@ begin
   values (trim(p_business_name), 'active', p_subscription_fee, v_expires_at, p_contact_phone, p_owner_name, p_notes)
   returning id, join_code into v_org_id, v_join_code;
 
-  -- 2. Create Auth User for the business owner
-  insert into auth.users (
-    instance_id,
-    id,
-    aud,
-    role,
-    email,
-    encrypted_password,
-    email_confirmed_at,
-    raw_app_meta_data,
-    raw_user_meta_data,
-    created_at,
-    updated_at
-  )
-  values (
-    '00000000-0000-0000-0000-000000000000',
-    gen_random_uuid(),
-    'authenticated',
-    'authenticated',
-    lower(trim(p_owner_email)),
-    extensions.crypt(p_temporary_password, extensions.gen_salt('bf')),
-    now(),
-    '{"provider":"email","providers":["email"]}',
-    jsonb_build_object(
-      'full_name', p_owner_name,
-      'org_id', v_org_id::text,
-      'org_name', p_business_name,
-      'role', 'owner'
-    ),
-    now(),
-    now()
-  )
-  returning id into v_user_id;
+  -- 2. Resolve owner if already created via GoTrue Auth
+  if v_user_id is null then
+    select id into v_user_id from auth.users where email = lower(trim(p_owner_email)) limit 1;
+  end if;
 
-  -- 2b. Register identity in auth.identities (required by GoTrue for email auth)
-  insert into auth.identities (
-    id,
-    user_id,
-    identity_data,
-    provider,
-    provider_id,
-    last_sign_in_at,
-    created_at,
-    updated_at
-  )
-  values (
-    gen_random_uuid(),
-    v_user_id,
-    jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_owner_email))),
-    'email',
-    lower(trim(p_owner_email)),
-    now(),
-    now(),
-    now()
-  )
-  on conflict (provider, provider_id) do update set
-    user_id = excluded.user_id,
-    identity_data = excluded.identity_data,
-    updated_at = now();
+  if v_user_id is null then
+    insert into auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at
+    )
+    values (
+      '00000000-0000-0000-0000-000000000000',
+      gen_random_uuid(),
+      'authenticated',
+      'authenticated',
+      lower(trim(p_owner_email)),
+      extensions.crypt(p_temporary_password, extensions.gen_salt('bf')),
+      now(),
+      '{"provider":"email","providers":["email"]}',
+      jsonb_build_object(
+        'full_name', p_owner_name,
+        'org_id', v_org_id::text,
+        'org_name', p_business_name,
+        'role', 'owner'
+      ),
+      now(),
+      now()
+    )
+    returning id into v_user_id;
+
+    insert into auth.identities (
+      id,
+      user_id,
+      identity_data,
+      provider,
+      provider_id,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      v_user_id,
+      jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_owner_email))),
+      'email',
+      lower(trim(p_owner_email)),
+      now(),
+      now(),
+      now()
+    )
+    on conflict (provider, provider_id) do update set
+      user_id = excluded.user_id,
+      identity_data = excluded.identity_data,
+      updated_at = now();
+  end if;
 
   -- 3. Link profile to the organization
   insert into public.profiles (id, org_id, full_name, role)
