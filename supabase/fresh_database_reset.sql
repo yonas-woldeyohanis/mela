@@ -433,6 +433,137 @@ grant execute on function public.super_admin_get_overview to authenticated;
 grant execute on function public.is_super_admin to authenticated;
 grant execute on function public.is_org_active to authenticated;
 
+-- =====================================================================
+-- 6.5 AUTOMATIC BI-DIRECTIONAL SMS RECONCILIATION TRIGGERS
+-- =====================================================================
+
+-- DIRECTION A: Scan arrives AFTER SMS (Payment already in bank_credits)
+create or replace function public.match_transaction_with_credit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_credit_id uuid;
+  v_credit_amount numeric(12,2);
+begin
+  new.reference_number := upper(trim(new.reference_number));
+
+  select id, amount into v_credit_id, v_credit_amount
+  from public.bank_credits
+  where org_id = new.org_id
+    and reference_number = new.reference_number
+    and (used_by_tx_id is null or used_by_tx_id = new.id)
+  order by created_at desc
+  limit 1;
+
+  if v_credit_id is not null then
+    if abs(v_credit_amount - new.amount) < 0.05 then
+      new.verification_status := 'verified';
+    else
+      new.verification_status := 'mismatch';
+    end if;
+
+    update public.bank_credits
+    set used_by_tx_id = new.id
+    where id = v_credit_id;
+  else
+    if new.verification_status is null or new.verification_status = '' then
+      new.verification_status := 'awaiting';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_match_tx_on_insert on public.transactions;
+create trigger trg_match_tx_on_insert
+  before insert or update of reference_number, amount on public.transactions
+  for each row execute function public.match_transaction_with_credit();
+
+-- DIRECTION B: SMS arrives AFTER Scan (Scan was saved first with 'awaiting')
+create or replace function public.match_credit_with_pending_transaction()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_tx_id uuid;
+  v_tx_amount numeric(12,2);
+begin
+  new.reference_number := upper(trim(new.reference_number));
+
+  select id, amount into v_tx_id, v_tx_amount
+  from public.transactions
+  where org_id = new.org_id
+    and reference_number = new.reference_number
+    and verification_status in ('awaiting', 'unverified')
+  order by created_at desc
+  limit 1;
+
+  if v_tx_id is not null then
+    if abs(v_tx_amount - new.amount) < 0.05 then
+      update public.transactions
+      set verification_status = 'verified'
+      where id = v_tx_id;
+      new.used_by_tx_id := v_tx_id;
+    else
+      update public.transactions
+      set verification_status = 'mismatch'
+      where id = v_tx_id;
+      new.used_by_tx_id := v_tx_id;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_match_credit_on_insert on public.bank_credits;
+create trigger trg_match_credit_on_insert
+  before insert on public.bank_credits
+  for each row execute function public.match_credit_with_pending_transaction();
+
+-- RPC for background SMS listener to record bank credit
+create or replace function public.ingest_bank_sms(
+  p_org_id uuid,
+  p_reference text,
+  p_amount numeric,
+  p_sender text default null,
+  p_provider text default null,
+  p_raw_sms text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_status text := 'recorded';
+begin
+  insert into public.bank_credits (org_id, reference_number, amount, sender_name, provider, raw_sms)
+  values (p_org_id, upper(trim(p_reference)), p_amount, p_sender, p_provider, p_raw_sms)
+  returning id into v_id;
+
+  select coalesce(t.verification_status, 'recorded') into v_status
+  from public.bank_credits bc
+  left join public.transactions t on t.id = bc.used_by_tx_id
+  where bc.id = v_id;
+
+  return jsonb_build_object(
+    'success', true,
+    'credit_id', v_id,
+    'verification_status', v_status
+  );
+end;
+$$;
+
+grant execute on function public.ingest_bank_sms to authenticated, service_role;
+
 
 -- 7. ROW LEVEL SECURITY (RLS) POLICIES
 alter table public.organizations enable row level security;
