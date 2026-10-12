@@ -176,6 +176,32 @@ begin
   )
   returning id into v_user_id;
 
+  -- 2b. Register identity in auth.identities (required by GoTrue for email auth)
+  insert into auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  )
+  values (
+    v_user_id::text,
+    v_user_id,
+    jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_owner_email))),
+    'email',
+    lower(trim(p_owner_email)),
+    now(),
+    now(),
+    now()
+  )
+  on conflict (provider, provider_id) do update set
+    user_id = excluded.user_id,
+    identity_data = excluded.identity_data,
+    updated_at = now();
+
   -- 3. Link profile to the organization
   insert into public.profiles (id, org_id, full_name, role)
   values (v_user_id, v_org_id, p_owner_name, 'owner')
@@ -270,23 +296,70 @@ end;
 $$;
 
 create or replace function public.super_admin_reset_owner_password(
-  p_owner_id uuid,
-  p_new_temporary_password text
+  p_org_id uuid default null,
+  p_owner_id uuid default null,
+  p_new_temporary_password text default 'Pass1234'
 )
 returns jsonb
 language plpgsql
 security definer
 set search_path = public, auth, extensions
 as $$
+declare
+  v_uid uuid := p_owner_id;
+  v_email text;
 begin
   if not is_super_admin() then raise exception 'Access denied.'; end if;
+
+  if v_uid is null and p_org_id is not null then
+    select p.id, u.email into v_uid, v_email
+    from public.profiles p
+    join auth.users u on u.id = p.id
+    where p.org_id = p_org_id and p.role = 'owner'
+    limit 1;
+  end if;
+
+  if v_uid is null then
+    raise exception 'Owner account could not be found for this business.';
+  end if;
+
+  if v_email is null then
+    select email into v_email from auth.users where id = v_uid;
+  end if;
 
   update auth.users
   set encrypted_password = extensions.crypt(p_new_temporary_password, extensions.gen_salt('bf')),
       updated_at = now()
-  where id = p_owner_id;
+  where id = v_uid;
 
-  return jsonb_build_object('success', true, 'owner_id', p_owner_id);
+  if v_email is not null then
+    insert into auth.identities (
+      id,
+      user_id,
+      identity_data,
+      provider,
+      provider_id,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    )
+    values (
+      v_uid::text,
+      v_uid,
+      jsonb_build_object('sub', v_uid::text, 'email', lower(trim(v_email))),
+      'email',
+      lower(trim(v_email)),
+      now(),
+      now(),
+      now()
+    )
+    on conflict (provider, provider_id) do update set
+      user_id = excluded.user_id,
+      identity_data = excluded.identity_data,
+      updated_at = now();
+  end if;
+
+  return jsonb_build_object('success', true, 'owner_id', v_uid, 'owner_email', v_email);
 end;
 $$;
 
@@ -408,6 +481,20 @@ begin
     now(),
     now()
   );
+
+  -- Create identity for master admin (required by GoTrue)
+  insert into auth.identities (
+    id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+  )
+  values (
+    v_admin_uid::text, v_admin_uid,
+    jsonb_build_object('sub', v_admin_uid::text, 'email', 'admin@mela.et'),
+    'email', 'admin@mela.et', now(), now(), now()
+  )
+  on conflict (provider, provider_id) do update set
+    user_id = excluded.user_id,
+    identity_data = excluded.identity_data,
+    updated_at = now();
 
   -- Create profile (upsert to handle trigger or explicit creation cleanly)
   insert into public.profiles (id, org_id, full_name, role)

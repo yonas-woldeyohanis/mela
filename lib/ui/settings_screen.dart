@@ -47,7 +47,7 @@ class SettingsScreen extends ConsumerWidget {
           StatusPill(user.role.toUpperCase(), cs.primary),
         ]),
       ),
-      if (user.isManager) ...[
+      if (user.isManager && !user.isSuperAdmin) ...[
         const SizedBox(height: 12),
         Panel(
           child: Row(children: [

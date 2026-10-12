@@ -413,10 +413,6 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
   }
 
   Future<void> _resetOwnerPasswordDialog(BuildContext context, TenantOverview t) async {
-    if (t.ownerId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Owner record not found.')));
-      return;
-    }
     final passCtrl = TextEditingController(text: 'Pass1234');
     showDialog(
       context: context,
@@ -440,6 +436,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
             onPressed: () async {
               try {
                 await sb.rpc('super_admin_reset_owner_password', params: {
+                  'p_org_id': t.id,
                   'p_owner_id': t.ownerId,
                   'p_new_temporary_password': passCtrl.text.trim(),
                 });
