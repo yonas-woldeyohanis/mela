@@ -295,6 +295,9 @@ begin
 end;
 $$;
 
+drop function if exists public.super_admin_reset_owner_password(uuid, text);
+drop function if exists public.super_admin_reset_owner_password(uuid, uuid, text);
+
 create or replace function public.super_admin_reset_owner_password(
   p_org_id uuid default null,
   p_owner_id uuid default null,
@@ -404,7 +407,7 @@ grant execute on function public.super_admin_create_business to authenticated;
 grant execute on function public.super_admin_edit_business to authenticated;
 grant execute on function public.super_admin_delete_business to authenticated;
 grant execute on function public.super_admin_set_business_status to authenticated;
-grant execute on function public.super_admin_reset_owner_password to authenticated;
+grant execute on function public.super_admin_reset_owner_password(uuid, uuid, text) to authenticated;
 grant execute on function public.super_admin_get_overview to authenticated;
 grant execute on function public.is_super_admin to authenticated;
 grant execute on function public.is_org_active to authenticated;

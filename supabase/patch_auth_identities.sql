@@ -141,7 +141,10 @@ end;
 $$;
 
 
--- 3. UPDATE super_admin_reset_owner_password TO ACCEPT ORG ID & SYNC IDENTITY
+-- 3. DROP OLD OVERLOADS & UPDATE super_admin_reset_owner_password
+drop function if exists public.super_admin_reset_owner_password(uuid, text);
+drop function if exists public.super_admin_reset_owner_password(uuid, uuid, text);
+
 create or replace function public.super_admin_reset_owner_password(
   p_org_id uuid default null,
   p_owner_id uuid default null,
@@ -211,4 +214,4 @@ end;
 $$;
 
 grant execute on function public.super_admin_create_business to authenticated;
-grant execute on function public.super_admin_reset_owner_password to authenticated;
+grant execute on function public.super_admin_reset_owner_password(uuid, uuid, text) to authenticated;
