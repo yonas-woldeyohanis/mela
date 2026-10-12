@@ -9,6 +9,7 @@ import '../core/utils.dart';
 import '../state/providers.dart';
 import '../state/security_provider.dart';
 import '../state/sms_station_provider.dart';
+import '../data/models.dart';
 import 'widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -69,6 +70,92 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
           ]),
+        ),
+        const SizedBox(height: 12),
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.workspace_premium_rounded, color: cs.primary, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Business Subscription', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(
+                      user.orgName,
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                  ]),
+                ),
+                _subscriptionBadge(user),
+              ]),
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Plan / Rate', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                    const SizedBox(height: 2),
+                    const Text('1,000 ETB / month', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  ]),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text('Days Remaining', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                    const SizedBox(height: 2),
+                    Text(
+                      _remainingDaysText(user.subscriptionExpiresAt),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: _remainingDaysColor(user.subscriptionExpiresAt),
+                      ),
+                    ),
+                  ]),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      user.subscriptionExpiresAt != null && user.subscriptionExpiresAt!.isBefore(DateTime.now())
+                          ? Icons.error_outline_rounded
+                          : Icons.event_available_rounded,
+                      size: 18,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        user.subscriptionExpiresAt != null
+                            ? 'Renews / Expires: ${fmtDateTime(user.subscriptionExpiresAt!)}'
+                            : 'No active expiration date recorded',
+                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Contact Super Admin or support to renew or manage your monthly subscription.',
+                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
         ),
         _section(context, 'SMS Verification Station'),
         Panel(
@@ -555,4 +642,37 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+Widget _subscriptionBadge(AppUser user) {
+  if (user.orgStatus == 'suspended') {
+    return const StatusPill('Suspended', StatusColors.flagged, icon: Icons.block_rounded);
+  }
+  if (user.subscriptionExpiresAt != null) {
+    final diff = user.subscriptionExpiresAt!.difference(DateTime.now()).inDays;
+    if (diff < 0) {
+      return const StatusPill('Expired', StatusColors.flagged, icon: Icons.cancel_outlined);
+    }
+    if (diff <= 7) {
+      return const StatusPill('Expiring Soon', Color(0xFFF59E0B), icon: Icons.timelapse_rounded);
+    }
+  }
+  return const StatusPill('Active', StatusColors.synced, icon: Icons.check_circle_rounded);
+}
+
+String _remainingDaysText(DateTime? expiresAt) {
+  if (expiresAt == null) return 'N/A';
+  final diff = expiresAt.difference(DateTime.now()).inDays;
+  if (diff < 0) return 'Expired';
+  if (diff == 0) return 'Expires today';
+  if (diff == 1) return '1 day left';
+  return '$diff days left';
+}
+
+Color _remainingDaysColor(DateTime? expiresAt) {
+  if (expiresAt == null) return Colors.grey;
+  final diff = expiresAt.difference(DateTime.now()).inDays;
+  if (diff < 0) return StatusColors.flagged;
+  if (diff <= 7) return const Color(0xFFF59E0B);
+  return StatusColors.synced;
 }

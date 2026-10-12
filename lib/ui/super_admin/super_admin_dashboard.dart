@@ -520,9 +520,9 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: cs.errorContainer.withOpacity(0.4),
+                        color: cs.errorContainer.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: cs.error.withOpacity(0.5)),
+                        border: Border.all(color: cs.error.withValues(alpha: 0.5)),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config.dart';
+import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -216,9 +217,33 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => EmptyState(Icons.error_outline, 'Could not load team', '$e'),
         data: (list) {
-          final filtered = _filter == 'all' ? list : list.where((s) => s.role == _filter).toList();
+          final owner = list.where((s) => s.role == 'owner').firstOrNull;
+          final employees = list.where((s) => s.role != 'owner').toList();
+          final filtered = _filter == 'all' ? employees : employees.where((s) => s.role == _filter).toList();
 
           return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+            // Business Owner Executive Card
+            if (owner != null) ...[
+              Panel(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(children: [
+                  CircleAvatar(
+                    backgroundColor: cs.primaryContainer,
+                    child: Icon(Icons.shield_rounded, color: cs.primary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(owner.fullName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                      Text('Business Owner · System Executive', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                    ]),
+                  ),
+                  const StatusPill('OWNER', StatusColors.synced),
+                ]),
+              ),
+              const SizedBox(height: 14),
+            ],
+
             // Join Code banner
             Panel(
               child: Row(children: [
@@ -232,7 +257,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     const Text('Business Join Code', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     Text(user.joinCode, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                    Text('Give this to employees to join as waiters', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                    Text('Give this to employees to join as waiters or cashiers', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                   ]),
                 ),
                 IconButton.filledTonal(
@@ -248,15 +273,15 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Role filter chips
+            // Role filter chips for employees
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
                 for (final f in [
-                  {'id': 'all', 'label': 'All (${list.length})'},
-                  {'id': 'waiter', 'label': 'Waiters (${list.where((s) => s.role == 'waiter').length})'},
-                  {'id': 'cashier', 'label': 'Cashiers (${list.where((s) => s.role == 'cashier').length})'},
-                  {'id': 'manager', 'label': 'Managers (${list.where((s) => s.role == 'manager').length})'},
+                  {'id': 'all', 'label': 'Staff (${employees.length})'},
+                  {'id': 'waiter', 'label': 'Waiters (${employees.where((s) => s.role == 'waiter').length})'},
+                  {'id': 'cashier', 'label': 'Cashiers (${employees.where((s) => s.role == 'cashier').length})'},
+                  {'id': 'manager', 'label': 'Managers (${employees.where((s) => s.role == 'manager').length})'},
                 ])
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -269,6 +294,18 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
               ]),
             ),
             const SizedBox(height: 12),
+
+            if (filtered.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'No staff members in this category.\nShare the join code above to add staff.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                  ),
+                ),
+              ),
 
             for (final s in filtered) ...[
               Builder(builder: (ctx) {

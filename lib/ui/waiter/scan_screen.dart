@@ -4,8 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/friendly_error.dart';
-import '../../core/theme.dart';
-import '../../core/utils.dart';
 import '../../services/ocr_parser.dart';
 import '../../services/receipt_pipeline.dart';
 import '../../state/providers.dart';
@@ -144,12 +142,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
-    final today = startOfDay(DateTime.now());
-    final total = ref
-        .watch(myReceiptsProvider(today))
-        .maybeWhen(data: (l) => l.fold<double>(0, (a, r) => a + r.amount), orElse: () => 0.0);
-    final sync = ref.watch(syncProvider);
-    final pending = ref.watch(pendingCountProvider).valueOrNull ?? 0;
     final c = _cam;
 
     return Scaffold(
@@ -179,40 +171,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
                 : const CircularProgressIndicator(),
           ),
         CustomPaint(painter: _FramePainter()),
-        // Top bar: running shift total + sync status
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Row(children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(18)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('YOUR SHIFT TODAY',
-                        style: TextStyle(color: Colors.white60, fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(fmtCurrency(total),
-                          style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800)),
-                    ),
-                  ]),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(18)),
-                child: Column(children: [
-                  Icon(sync.online ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                      color: sync.online ? StatusColors.synced : StatusColors.pending),
-                  Text(pending == 0 ? 'Synced' : '$pending left',
-                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
-                ]),
-              ),
-            ]),
-          ),
-        ),
         // Bottom controls
         Align(
           alignment: Alignment.bottomCenter,
