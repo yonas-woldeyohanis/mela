@@ -10,6 +10,10 @@ import '../widgets.dart';
 
 final tenantsProvider = FutureProvider.autoDispose<List<TenantOverview>>((ref) async {
   final res = await sb.rpc('super_admin_get_overview');
+  if (res is Map && res['businesses'] is List) {
+    final list = res['businesses'] as List;
+    return list.map((e) => TenantOverview.fromJson(e as Map<String, dynamic>)).toList();
+  }
   if (res is List) {
     return res.map((e) => TenantOverview.fromJson(e as Map<String, dynamic>)).toList();
   }
