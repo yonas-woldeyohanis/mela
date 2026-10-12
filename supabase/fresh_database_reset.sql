@@ -109,7 +109,22 @@ create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
 
--- 5. SUPER ADMIN RPC: PROVISION NEW BUSINESS & OWNER
+-- 5. DROP ALL PREVIOUS super_admin FUNCTION OVERLOADS (Eliminates ambiguity)
+do $$
+declare
+  r record;
+begin
+  for r in (
+    select p.oid::regprocedure as func_signature
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname like 'super_admin_%'
+  ) loop
+    execute 'drop function if exists ' || r.func_signature || ' cascade;';
+  end loop;
+end $$;
+
+-- SUPER ADMIN RPC: PROVISION NEW BUSINESS & OWNER
 create or replace function public.super_admin_create_business(
   p_business_name text,
   p_owner_email text,
