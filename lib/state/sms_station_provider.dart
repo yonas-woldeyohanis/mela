@@ -42,10 +42,34 @@ class SmsStationNotifier extends StateNotifier<SmsStationState> {
   StreamSubscription? _creditSub;
 
   Future<void> _init() async {
-    final running = await SmsListenerService.instance.isRunning();
-    state = state.copyWith(isRunning: running);
-
     _creditSub = SmsListenerService.instance.onCreditDetected.listen(_handleCredit);
+    final running = await SmsListenerService.instance.isRunning();
+
+    final prefs = ref.read(prefsProvider);
+    final disabledByUser = prefs.getBool('station_disabled_by_user') ?? false;
+
+    final user = ref.read(authProvider);
+    if (!running && !disabledByUser && user != null && !user.isSuperAdmin && user.orgId.isNotEmpty) {
+      final success = await SmsListenerService.instance.startStation(orgId: user.orgId);
+      state = state.copyWith(isRunning: success);
+    } else {
+      state = state.copyWith(isRunning: running);
+    }
+  }
+
+  Future<void> autoStartIfNeeded() async {
+    if (state.isRunning) return;
+    final prefs = ref.read(prefsProvider);
+    final disabledByUser = prefs.getBool('station_disabled_by_user') ?? false;
+    if (disabledByUser) return;
+
+    final user = ref.read(authProvider);
+    if (user != null && !user.isSuperAdmin && user.orgId.isNotEmpty) {
+      final success = await SmsListenerService.instance.startStation(orgId: user.orgId);
+      if (success) {
+        state = state.copyWith(isRunning: true);
+      }
+    }
   }
 
   Future<void> _handleCredit(ParsedBankSms credit) async {
@@ -81,13 +105,18 @@ class SmsStationNotifier extends StateNotifier<SmsStationState> {
     final user = ref.read(authProvider);
     final orgId = user?.orgId;
     if (orgId == null) return false;
+    final prefs = ref.read(prefsProvider);
 
     if (state.isRunning) {
       await SmsListenerService.instance.stopStation();
+      await prefs.setBool('station_disabled_by_user', true);
       state = state.copyWith(isRunning: false);
       return false;
     } else {
       final success = await SmsListenerService.instance.startStation(orgId: orgId);
+      if (success) {
+        await prefs.setBool('station_disabled_by_user', false);
+      }
       state = state.copyWith(isRunning: success);
       return success;
     }

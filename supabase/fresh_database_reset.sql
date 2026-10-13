@@ -18,14 +18,17 @@ delete from auth.users;
 create extension if not exists pgcrypto schema extensions;
 
 alter table public.organizations 
-  add column if not exists status text not null default 'active' 
-  check (status in ('active', 'suspended', 'trial', 'expired')),
+  add column if not exists status text not null default 'active',
   add column if not exists subscription_fee numeric(10,2) default 1000.00,
   add column if not exists billing_cycle text default 'monthly',
   add column if not exists expires_at timestamptz default (now() + interval '30 days'),
   add column if not exists contact_phone text,
   add column if not exists contact_person text,
   add column if not exists notes text;
+
+alter table public.organizations drop constraint if exists organizations_status_check;
+alter table public.organizations add constraint organizations_status_check 
+  check (status in ('active', 'suspended', 'trial', 'expired', 'paused'));
 
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check 

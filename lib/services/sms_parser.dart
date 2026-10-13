@@ -159,24 +159,196 @@ class SmsParser {
     }
 
     // -------------------------------------------------------------
-    // OTHER ETHIOPIAN BANKS (Awash, Dashen, BOA, Sinqee, Wegagen)
+    // DASHEN BANK / AMOLE
     // -------------------------------------------------------------
-    final isGeneralCredit = lower.contains('credited') || lower.contains('received') || lower.contains('deposited');
+    if (senderUpper.contains('DASHEN') || senderUpper.contains('AMOLE') || senderUpper == '8899' || lower.contains('dashen') || lower.contains('amole') || lower.contains('ዳሽን ባንክ')) {
+      final isCredit = lower.contains('credited') || lower.contains('received') || lower.contains('deposited') || lower.contains('ገቢ') || lower.contains('ደርሶዎታል');
+      if (isCredit) {
+        String? ref;
+        final refMatch = RegExp(r'(?:txn\s*ref|ref(?:erence)?(?:\s*no|\s*number)?|txn\s*id|transaction\s*id|ማጣቀሻ|መለያ)\s*[:\-]?\s*([A-Za-z0-9]{6,24})', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b(DA[0-9A-Z]{6,18})\b', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b([A-Z0-9]{8,18})\b').firstMatch(text);
+        if (refMatch != null) ref = refMatch.group(1)?.trim().toUpperCase();
+
+        double? amt;
+        final amtMatch = RegExp(r'(?:credited\s*(?:with)?|amount\s*(?:of)?|received|ETB|Birr|ብር)\s*[:\-]?\s*' + _n, caseSensitive: false).firstMatch(text) ??
+            RegExp(_n + r'\s*(?:ETB|Birr|ብር)', caseSensitive: false).firstMatch(text);
+        if (amtMatch != null) amt = _parseAmount(amtMatch.group(1));
+
+        String? senderName;
+        final nameMatch = RegExp(r'(?:from|by|ከ|በ)\s+([A-Za-z\s]+?)(?:\s*\.|\s+ref|\s+txn|\s+on|\s+at|\s*\(|\s*ገቢ)', caseSensitive: false).firstMatch(text);
+        if (nameMatch != null) senderName = nameMatch.group(1)?.trim();
+
+        if (ref != null && amt != null && amt > 0) {
+          return ParsedBankSms(reference: ref, amount: amt, provider: 'Dashen', senderName: senderName, rawSms: text, receivedAt: time);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // AWASH BANK
+    // -------------------------------------------------------------
+    if (senderUpper.contains('AWASH') || lower.contains('awash') || lower.contains('አዋሽ ባንክ')) {
+      final isCredit = lower.contains('credited') || lower.contains('received') || lower.contains('ገቢ') || lower.contains('ደርሶዎታል');
+      if (isCredit) {
+        String? ref;
+        final refMatch = RegExp(r'(?:trans\s*ref|ref(?:erence)?(?:\s*no|\s*number)?|txn\s*id|transaction\s*id|ማጣቀሻ|መለያ)\s*[:\-]?\s*([A-Za-z0-9]{6,24})', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b(AW[0-9A-Z]{6,18})\b', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b([A-Z0-9]{8,18})\b').firstMatch(text);
+        if (refMatch != null) ref = refMatch.group(1)?.trim().toUpperCase();
+
+        double? amt;
+        final amtMatch = RegExp(r'(?:credited\s*(?:with)?|amount\s*(?:of)?|received|ETB|Birr|ብር)\s*[:\-]?\s*' + _n, caseSensitive: false).firstMatch(text) ??
+            RegExp(_n + r'\s*(?:ETB|Birr|ብር)', caseSensitive: false).firstMatch(text);
+        if (amtMatch != null) amt = _parseAmount(amtMatch.group(1));
+
+        String? senderName;
+        final nameMatch = RegExp(r'(?:from|by|ከ|በ)\s+([A-Za-z\s]+?)(?:\s*\.|\s+ref|\s+txn|\s+on|\s+at|\s*\(|\s*ገቢ)', caseSensitive: false).firstMatch(text);
+        if (nameMatch != null) senderName = nameMatch.group(1)?.trim();
+
+        if (ref != null && amt != null && amt > 0) {
+          return ParsedBankSms(reference: ref, amount: amt, provider: 'Awash', senderName: senderName, rawSms: text, receivedAt: time);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // BANK OF ABYSSINIA (BOA) / APOLLO
+    // -------------------------------------------------------------
+    if (senderUpper.contains('ABYSSINIA') || senderUpper.contains('BOA') || senderUpper.contains('APOLLO') || lower.contains('abyssinia') || lower.contains('አቢሲኒያ ባንክ')) {
+      final isCredit = lower.contains('credited') || lower.contains('deposited') || lower.contains('received') || lower.contains('ገቢ');
+      if (isCredit) {
+        String? ref;
+        final refMatch = RegExp(r'(?:ref(?:erence)?(?:\s*no|\s*number)?|txn\s*id|transaction\s*id|code|መለያ|ማጣቀሻ)\s*[:\-]?\s*([A-Za-z0-9]{6,24})', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b(BOA[0-9A-Z]{6,18})\b', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b([A-Z0-9]{8,18})\b').firstMatch(text);
+        if (refMatch != null) ref = refMatch.group(1)?.trim().toUpperCase();
+
+        double? amt;
+        final amtMatch = RegExp(r'(?:credited\s*(?:with)?|deposited|amount\s*(?:of)?|received|ETB|Birr|ብር)\s*[:\-]?\s*' + _n, caseSensitive: false).firstMatch(text) ??
+            RegExp(_n + r'\s*(?:ETB|Birr|ብር)', caseSensitive: false).firstMatch(text);
+        if (amtMatch != null) amt = _parseAmount(amtMatch.group(1));
+
+        String? senderName;
+        final nameMatch = RegExp(r'(?:from|by|ከ|በ)\s+([A-Za-z\s]+?)(?:\s*\.|\s+ref|\s+txn|\s+on|\s+at|\s*\(|\s*ገቢ)', caseSensitive: false).firstMatch(text);
+        if (nameMatch != null) senderName = nameMatch.group(1)?.trim();
+
+        if (ref != null && amt != null && amt > 0) {
+          return ParsedBankSms(reference: ref, amount: amt, provider: 'Abyssinia', senderName: senderName, rawSms: text, receivedAt: time);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // COOPERATIVE BANK OF OROMIA (COOP / COOPAY / COOPAY-EBIRR)
+    // -------------------------------------------------------------
+    if (senderUpper.contains('COOP') || lower.contains('coopbank') || lower.contains('coopay') || lower.contains('ህብረት ስራ ባንክ')) {
+      final isCredit = lower.contains('credited') || lower.contains('received') || lower.contains('galii') || lower.contains('ገቢ');
+      if (isCredit) {
+        String? ref;
+        final refMatch = RegExp(r'(?:txn\s*ref|ref(?:erence)?(?:\s*no|\s*number)?|txn\s*id|transaction\s*id|መለያ)\s*[:\-]?\s*([A-Za-z0-9]{6,24})', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b(CP[0-9A-Z]{6,18})\b', caseSensitive: false).firstMatch(text) ??
+            RegExp(r'\b([A-Z0-9]{8,18})\b').firstMatch(text);
+        if (refMatch != null) ref = refMatch.group(1)?.trim().toUpperCase();
+
+        double? amt;
+        final amtMatch = RegExp(r'(?:credited\s*(?:with)?|amount\s*(?:of)?|received|ETB|Birr|ብር|Qarshii)\s*[:\-]?\s*' + _n, caseSensitive: false).firstMatch(text) ??
+            RegExp(_n + r'\s*(?:ETB|Birr|ብር|Qarshii)', caseSensitive: false).firstMatch(text);
+        if (amtMatch != null) amt = _parseAmount(amtMatch.group(1));
+
+        if (ref != null && amt != null && amt > 0) {
+          return ParsedBankSms(reference: ref, amount: amt, provider: 'Coop', rawSms: text, receivedAt: time);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // M-PESA (SAFARICOM ETHIOPIA)
+    // -------------------------------------------------------------
+    if (senderUpper.contains('MPESA') || senderUpper.contains('M-PESA') || senderUpper.contains('SAFARICOM') || lower.contains('m-pesa')) {
+      final isCredit = lower.contains('received') || lower.contains('credited') || lower.contains('ገቢ') || lower.contains('ደርሶዎታል');
+      if (isCredit) {
+        String? ref;
+        final refMatch = RegExp(r'\b([A-Z0-9]{10})\b').firstMatch(text) ??
+            RegExp(r'(?:ref(?:erence)?|txn\s*id|code)\s*[:\-]?\s*([A-Za-z0-9]{8,16})', caseSensitive: false).firstMatch(text);
+        if (refMatch != null) ref = refMatch.group(1)?.trim().toUpperCase();
+
+        double? amt;
+        final amtMatch = RegExp(r'(?:received|amount\s*(?:of)?|ETB|Birr|ብር)\s*[:\-]?\s*' + _n, caseSensitive: false).firstMatch(text) ??
+            RegExp(_n + r'\s*(?:ETB|Birr|ብር)', caseSensitive: false).firstMatch(text);
+        if (amtMatch != null) amt = _parseAmount(amtMatch.group(1));
+
+        String? senderName;
+        final nameMatch = RegExp(r'(?:from|ከ)\s+([A-Za-z\s]+?)(?:\s+on|\s*\.|\s*\(|\s+251)', caseSensitive: false).firstMatch(text);
+        if (nameMatch != null) senderName = nameMatch.group(1)?.trim();
+
+        if (ref != null && amt != null && amt > 0) {
+          return ParsedBankSms(reference: ref, amount: amt, provider: 'M-Pesa', senderName: senderName, rawSms: text, receivedAt: time);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // UNIVERSAL PARSER FOR ALL ETHIOPIAN BANKS & INSTITUTIONS
+    // (Siinqee, Zemen, Nib, Hibret, Wegagen, Berhan, Enat, Amhara,
+    //  Global, Tsedey, Gadaa, Hijra, ZamZam, Rammis, Sidama, etc.)
+    // -------------------------------------------------------------
+    final isGeneralCredit = lower.contains('credited') ||
+        lower.contains('received') ||
+        lower.contains('deposited') ||
+        lower.contains('ገቢ ተደርጓል') ||
+        lower.contains('ገቢ ሆኗል') ||
+        lower.contains('ደርሶዎታል') ||
+        lower.contains('galii ta\'eera');
+
     if (isGeneralCredit) {
       String provider = 'Bank';
-      if (senderUpper.contains('AWASH') || lower.contains('awash')) provider = 'Awash';
-      if (senderUpper.contains('DASHEN') || lower.contains('dashen') || lower.contains('amole')) provider = 'Dashen';
-      if (senderUpper.contains('ABYSSINIA') || senderUpper.contains('BOA') || lower.contains('abyssinia')) provider = 'Abyssinia';
-      if (senderUpper.contains('SINQEE') || lower.contains('sinqee')) provider = 'Sinqee';
-      if (senderUpper.contains('WEGAGEN') || lower.contains('wegagen')) provider = 'Wegagen';
-      if (senderUpper.contains('HIBRET') || lower.contains('hibret')) provider = 'Hibret';
+      if (senderUpper.contains('SINQEE') || senderUpper.contains('SIINQEE') || lower.contains('sinqee') || lower.contains('siinqee')) {
+        provider = 'Sinqee';
+      } else if (senderUpper.contains('ZEMEN') || lower.contains('zemen')) {
+        provider = 'Zemen';
+      } else if (senderUpper.contains('NIB') || lower.contains('nib')) {
+        provider = 'Nib';
+      } else if (senderUpper.contains('HIBRET') || senderUpper.contains('UNITED') || lower.contains('hibret')) {
+        provider = 'Hibret';
+      } else if (senderUpper.contains('WEGAGEN') || lower.contains('wegagen')) {
+        provider = 'Wegagen';
+      } else if (senderUpper.contains('BERHAN') || lower.contains('berhan')) {
+        provider = 'Berhan';
+      } else if (senderUpper.contains('OROMIA') || lower.contains('oromia')) {
+        provider = 'Oromia';
+      } else if (senderUpper.contains('AMHARA') || lower.contains('amhara')) {
+        provider = 'Amhara';
+      } else if (senderUpper.contains('ENAT') || lower.contains('enat')) {
+        provider = 'Enat';
+      } else if (senderUpper.contains('GLOBAL') || lower.contains('global')) {
+        provider = 'Global';
+      } else if (senderUpper.contains('TSEDEY') || lower.contains('tsedey')) {
+        provider = 'Tsedey';
+      } else if (senderUpper.contains('GADAA') || lower.contains('gadaa')) {
+        provider = 'Gadaa';
+      } else if (senderUpper.contains('HIJRA') || lower.contains('hijra')) {
+        provider = 'Hijra';
+      } else if (senderUpper.contains('ZAMZAM') || lower.contains('zamzam')) {
+        provider = 'ZamZam';
+      } else if (senderUpper.contains('RAMMIS') || lower.contains('rammis')) {
+        provider = 'Rammis';
+      } else if (senderUpper.contains('SIDAMA') || lower.contains('sidama')) {
+        provider = 'Sidama';
+      }
 
       // Look for Reference
-      final refMatch = RegExp(r'(?:ref(?:erence)?(?:\s*no|\s*number)?|txn\s*id|transaction\s*id|code)\s*[:\-]?\s*([A-Za-z0-9]{8,24})', caseSensitive: false).firstMatch(text) ??
+      final refMatch = RegExp(r'(?:ref(?:erence)?(?:\s*no|\s*number)?|txn\s*(?:id|no|num)|transaction\s*(?:id|number|no)|code|መለያ|ማጣቀሻ|ቁጥር)\s*[:\-]?\s*([A-Za-z0-9]{6,26})', caseSensitive: false).firstMatch(text) ??
           RegExp(r'\b(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{8,18}\b').firstMatch(text);
 
       // Look for Amount
-      final amtMatch = RegExp(r'(?:credited\s*(?:with)?|amount\s*of|ETB|Birr)\s*[:\-]?\s*' + _n, caseSensitive: false).firstMatch(text);
+      final amtMatch = RegExp(r'(?:credited\s*(?:with)?|amount\s*(?:of)?|received|ETB|Birr|ብር|Qarshii|ገቢ)\s*[:\-]?\s*' + _n, caseSensitive: false).firstMatch(text) ??
+          RegExp(_n + r'\s*(?:ETB|Birr|ብር|Qarshii)', caseSensitive: false).firstMatch(text);
+
+      // Look for Sender
+      String? senderName;
+      final nameMatch = RegExp(r'(?:from|by|ከ|በ)\s+([A-Za-z\s]+?)(?:\s*\.|\s+ref|\s+txn|\s+on|\s+at|\s*\(|\s*ገቢ)', caseSensitive: false).firstMatch(text);
+      if (nameMatch != null) senderName = nameMatch.group(1)?.trim();
 
       if (refMatch != null && amtMatch != null) {
         final ref = refMatch.group(1)?.trim().toUpperCase();
@@ -186,6 +358,7 @@ class SmsParser {
             reference: ref,
             amount: amt,
             provider: provider,
+            senderName: senderName,
             rawSms: text,
             receivedAt: time,
           );

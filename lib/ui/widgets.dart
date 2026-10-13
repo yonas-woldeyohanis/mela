@@ -188,19 +188,25 @@ class TotalHero extends StatelessWidget {
 }
 
 class HeroChip extends StatelessWidget {
-  const HeroChip(this.icon, this.text, {super.key});
+  const HeroChip(this.icon, this.text, {super.key, this.color});
   final IconData icon;
   final String text;
+  final Color? color;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final c = color ?? cs.onPrimary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: cs.onPrimary.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(99)),
+      decoration: BoxDecoration(
+        color: (color ?? cs.onPrimary).withValues(alpha: color != null ? 0.22 : 0.16),
+        borderRadius: BorderRadius.circular(99),
+      ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 15, color: cs.onPrimary),
+        Icon(icon, size: 15, color: c),
         const SizedBox(width: 6),
-        Text(text, style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.w700, fontSize: 12.5)),
+        Text(text, style: TextStyle(color: c, fontWeight: FontWeight.w700, fontSize: 12.5)),
       ]),
     );
   }

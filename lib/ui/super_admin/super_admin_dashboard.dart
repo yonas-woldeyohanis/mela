@@ -90,7 +90,10 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
         error: (e, _) => EmptyState(Icons.error_outline_rounded, 'Failed to load businesses', '$e'),
         data: (tenants) {
           final activeCount = tenants.where((t) => t.isActive).length;
-          final suspendedCount = tenants.where((t) => t.isSuspended || t.isExpired).length;
+          final dueSoonCount = tenants.where((t) => t.isDueSoon).length;
+          final overdueCount = tenants.where((t) => t.isOverdue).length;
+          final pausedCount = tenants.where((t) => t.isPaused).length;
+          final suspendedCount = tenants.where((t) => t.isSuspended).length;
           final totalMonthlyRevenue = tenants.where((t) => t.isActive).fold<double>(0, (a, t) => a + t.subscriptionFee);
 
           final filtered = tenants.where((t) {
@@ -102,7 +105,10 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
               if (!matchesName && !matchesOwner && !matchesPhone) return false;
             }
             if (_filter == 'active') return t.isActive;
-            if (_filter == 'suspended') return !t.isActive;
+            if (_filter == 'due_soon') return t.isDueSoon;
+            if (_filter == 'overdue') return t.isOverdue;
+            if (_filter == 'paused') return t.isPaused;
+            if (_filter == 'suspended') return t.isSuspended;
             return true;
           }).toList();
 
@@ -115,8 +121,14 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                 chips: [
                   HeroChip(Icons.domain_rounded, '${tenants.length} Total Businesses'),
                   HeroChip(Icons.check_circle_outline_rounded, '$activeCount Active Renters'),
+                  if (dueSoonCount > 0)
+                    HeroChip(Icons.timelapse_rounded, '$dueSoonCount Due Soon', color: const Color(0xFFF59E0B)),
+                  if (overdueCount > 0)
+                    HeroChip(Icons.warning_amber_rounded, '$overdueCount Overdue', color: cs.error),
+                  if (pausedCount > 0)
+                    HeroChip(Icons.pause_circle_outline_rounded, '$pausedCount Paused'),
                   if (suspendedCount > 0)
-                    HeroChip(Icons.block_rounded, '$suspendedCount Suspended / Expired'),
+                    HeroChip(Icons.block_rounded, '$suspendedCount Suspended'),
                 ],
               ),
               const SizedBox(height: 14),
@@ -152,12 +164,38 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                     selected: _filter == 'active',
                     onSelected: (_) => setState(() => _filter = 'active'),
                   ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: Text('Suspended / Expired ($suspendedCount)'),
-                    selected: _filter == 'suspended',
-                    onSelected: (_) => setState(() => _filter = 'suspended'),
-                  ),
+                  if (dueSoonCount > 0) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('Due Soon ($dueSoonCount)'),
+                      selected: _filter == 'due_soon',
+                      onSelected: (_) => setState(() => _filter = 'due_soon'),
+                    ),
+                  ],
+                  if (overdueCount > 0) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('Overdue ($overdueCount)'),
+                      selected: _filter == 'overdue',
+                      onSelected: (_) => setState(() => _filter = 'overdue'),
+                    ),
+                  ],
+                  if (pausedCount > 0) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('Paused ($pausedCount)'),
+                      selected: _filter == 'paused',
+                      onSelected: (_) => setState(() => _filter = 'paused'),
+                    ),
+                  ],
+                  if (suspendedCount > 0) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('Suspended ($suspendedCount)'),
+                      selected: _filter == 'suspended',
+                      onSelected: (_) => setState(() => _filter = 'suspended'),
+                    ),
+                  ],
                 ]),
               ),
               const SizedBox(height: 14),
@@ -177,14 +215,22 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Panel(
                     padding: const EdgeInsets.all(14),
-                    color: !t.isActive ? cs.errorContainer.withValues(alpha: 0.15) : null,
+                    color: t.isSuspended || t.isOverdue
+                        ? cs.errorContainer.withValues(alpha: 0.12)
+                        : (t.isPaused ? cs.surfaceContainerHighest.withValues(alpha: 0.3) : null),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         CircleAvatar(
-                          backgroundColor: t.isActive ? cs.primaryContainer : cs.errorContainer,
+                          backgroundColor: t.isActive
+                              ? cs.primaryContainer
+                              : (t.isPaused ? cs.surfaceContainerHighest : cs.errorContainer),
                           child: Icon(
-                            t.isActive ? Icons.store_rounded : Icons.lock_outline_rounded,
-                            color: t.isActive ? cs.onPrimaryContainer : cs.onErrorContainer,
+                            t.isActive
+                                ? Icons.store_rounded
+                                : (t.isPaused ? Icons.pause_rounded : Icons.lock_outline_rounded),
+                            color: t.isActive
+                                ? cs.onPrimaryContainer
+                                : (t.isPaused ? cs.onSurfaceVariant : cs.onErrorContainer),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -195,12 +241,80 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
                           ]),
                         ),
-                        StatusPill(
-                          t.status.toUpperCase(),
-                          t.isActive ? StatusColors.synced : StatusColors.flagged,
-                          icon: t.isActive ? Icons.check_circle_rounded : Icons.block_rounded,
-                        ),
+                        _buildStatusPill(t, cs),
                       ]),
+
+                      // Subscription Alerts: Overdue, Due Soon, or Paused
+                      if (t.isOverdue) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: cs.error.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(children: [
+                            Icon(Icons.warning_amber_rounded, size: 18, color: cs.error),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Expired on ${fmtDate(t.expiresAt!)} · Overdue by ${DateTime.now().difference(t.expiresAt!).inDays} days',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.error),
+                              ),
+                            ),
+                            if (!t.isSuspended)
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  foregroundColor: cs.error,
+                                ),
+                                onPressed: () => _toggleSuspend(context, t, true),
+                                child: const Text('Suspend Access', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                              ),
+                          ]),
+                        ),
+                      ] else if (t.isDueSoon) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                          ),
+                          child: Row(children: [
+                            const Icon(Icons.notifications_active_rounded, size: 18, color: Color(0xFFD97706)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Due ${t.daysRemaining == 0 ? "today" : "in ${t.daysRemaining} days"} (${fmtDate(t.expiresAt!)})',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFD97706)),
+                              ),
+                            ),
+                          ]),
+                        ),
+                      ] else if (t.isPaused) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(children: [
+                            Icon(Icons.pause_circle_outline_rounded, size: 18, color: cs.onSurfaceVariant),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Service is currently paused by administrator.',
+                                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ]),
+                        ),
+                      ],
+
                       const Divider(height: 22),
 
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -210,8 +324,8 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                           Text('Expires: ${fmtDateTime(t.expiresAt!)}',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: t.isExpired ? cs.error : cs.onSurfaceVariant,
-                                fontWeight: t.isExpired ? FontWeight.w700 : FontWeight.normal,
+                                color: t.isOverdue ? cs.error : cs.onSurfaceVariant,
+                                fontWeight: t.isOverdue ? FontWeight.w700 : FontWeight.normal,
                               )),
                       ]),
                       if (t.ownerEmail != null) ...[
@@ -231,31 +345,45 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                       ],
                       const SizedBox(height: 14),
 
-                      // Action Controls: Suspend/Activate, Edit, Reset Password, Delete
+                      // Action Controls: Renew / Extend, Suspend / Restore, Pause / Resume, Edit, Key, Delete
                       Row(children: [
                         Expanded(
                           child: FilledButton.tonalIcon(
-                            style: FilledButton.styleFrom(
-                              foregroundColor: t.isActive ? cs.error : cs.primary,
-                            ),
-                            onPressed: () => _toggleTenantStatus(context, t),
-                            icon: Icon(t.isActive ? Icons.block_rounded : Icons.check_circle_outline_rounded, size: 18),
-                            label: Text(t.isActive ? 'Suspend Access' : 'Activate (+30 Days)'),
+                            icon: const Icon(Icons.more_time_rounded, size: 18),
+                            label: const Text('Renew / Extend'),
+                            onPressed: () => _openRenewSubscriptionDialog(context, t),
                           ),
                         ),
                         const SizedBox(width: 6),
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            style: FilledButton.styleFrom(
+                              foregroundColor: t.isSuspended ? cs.primary : cs.error,
+                            ),
+                            icon: Icon(t.isSuspended ? Icons.check_circle_outline_rounded : Icons.block_rounded, size: 18),
+                            label: Text(t.isSuspended ? 'Restore' : 'Suspend'),
+                            onPressed: () => _toggleSuspend(context, t, !t.isSuspended),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton.filledTonal(
+                          tooltip: t.isPaused ? 'Resume Service' : 'Pause Service',
+                          icon: Icon(t.isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 18),
+                          onPressed: () => _togglePause(context, t, !t.isPaused),
+                        ),
+                        const SizedBox(width: 4),
                         IconButton.filledTonal(
                           tooltip: 'Edit Business',
                           icon: const Icon(Icons.edit_outlined, size: 18),
                           onPressed: () => _openEditBusinessDialog(context, t),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         IconButton.filledTonal(
-                          tooltip: 'Reset Owner Password',
+                          tooltip: 'Reset Password',
                           icon: const Icon(Icons.key_rounded, size: 18),
                           onPressed: () => _resetOwnerPasswordDialog(context, t),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         IconButton.filledTonal(
                           tooltip: 'Delete Business',
                           style: IconButton.styleFrom(foregroundColor: cs.error),
@@ -273,22 +401,42 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
     );
   }
 
-  Future<void> _toggleTenantStatus(BuildContext context, TenantOverview t) async {
-    final newStatus = t.isActive ? 'suspended' : 'active';
-    final extendDays = t.isActive ? null : 30;
+  Widget _buildStatusPill(TenantOverview t, ColorScheme cs) {
+    if (t.isSuspended) {
+      return const StatusPill('SUSPENDED', StatusColors.flagged, icon: Icons.block_rounded);
+    }
+    if (t.isPaused) {
+      return const StatusPill('PAUSED', Color(0xFF6B7280), icon: Icons.pause_circle_rounded);
+    }
+    if (t.isOverdue) {
+      return const StatusPill('EXPIRED', StatusColors.flagged, icon: Icons.error_outline_rounded);
+    }
+    if (t.isDueSoon) {
+      return StatusPill(
+        t.daysRemaining == 0 ? 'DUE TODAY' : 'DUE IN ${t.daysRemaining}D',
+        const Color(0xFFF59E0B),
+        icon: Icons.timelapse_rounded,
+      );
+    }
+    return const StatusPill('ACTIVE', StatusColors.synced, icon: Icons.check_circle_rounded);
+  }
 
+  Future<void> _toggleSuspend(BuildContext context, TenantOverview t, bool suspend) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(t.isActive ? 'Suspend ${t.name}?' : 'Activate ${t.name}?'),
-        content: Text(t.isActive
-            ? 'This will immediately deny access for all staff and managers of "${t.name}" until payment is received.'
-            : 'This will activate the business for 30 days and restore staff access.'),
+        title: Text(suspend ? 'Suspend ${t.name}?' : 'Restore ${t.name}?'),
+        content: Text(suspend
+            ? 'This will immediately deny system access for staff and managers of "${t.name}". Existing subscription days remain intact.'
+            : 'This will restore active system access for "${t.name}". No additional subscription days are consumed.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: suspend ? Theme.of(context).colorScheme.error : null,
+            ),
             onPressed: () => Navigator.pop(context, true),
-            child: Text(t.isActive ? 'Suspend Access' : 'Activate (+30 Days)'),
+            child: Text(suspend ? 'Suspend Access' : 'Restore Access'),
           ),
         ],
       ),
@@ -298,12 +446,14 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
       try {
         await sb.rpc('super_admin_set_business_status', params: {
           'p_org_id': t.id,
-          'p_status': newStatus,
-          if (extendDays != null) 'p_extend_days': extendDays,
+          'p_status': suspend ? 'suspended' : 'active',
         });
         ref.invalidate(tenantsProvider);
         if (context.mounted) {
-          FriendlyError.showSuccess(context, t.isActive ? 'Business suspended.' : 'Business activated (+30 days).');
+          FriendlyError.showSuccess(
+            context,
+            suspend ? 'Business "${t.name}" suspended.' : 'Business "${t.name}" access restored.',
+          );
         }
       } catch (e) {
         if (context.mounted) {
@@ -311,6 +461,212 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
         }
       }
     }
+  }
+
+  Future<void> _togglePause(BuildContext context, TenantOverview t, bool pause) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(pause ? 'Pause Service for ${t.name}?' : 'Resume Service for ${t.name}?'),
+        content: Text(pause
+            ? 'This temporarily freezes service for "${t.name}" (e.g. renovation or break). Staff access is paused.'
+            : 'This will resume active service for "${t.name}".'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(pause ? 'Pause Service' : 'Resume Service'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        // Attempt 'paused' status; if check constraint not yet updated in DB, fallback to 'suspended'
+        try {
+          await sb.rpc('super_admin_set_business_status', params: {
+            'p_org_id': t.id,
+            'p_status': pause ? 'paused' : 'active',
+          });
+        } catch (_) {
+          await sb.rpc('super_admin_set_business_status', params: {
+            'p_org_id': t.id,
+            'p_status': pause ? 'suspended' : 'active',
+          });
+        }
+        ref.invalidate(tenantsProvider);
+        if (context.mounted) {
+          FriendlyError.showSuccess(
+            context,
+            pause ? 'Service for "${t.name}" paused.' : 'Service for "${t.name}" resumed.',
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          FriendlyError.show(context, e, title: 'Action Failed');
+        }
+      }
+    }
+  }
+
+  Future<void> _openRenewSubscriptionDialog(BuildContext context, TenantOverview t) async {
+    int selectedDays = 30;
+    final customDaysCtrl = TextEditingController(text: '30');
+    bool isCustom = false;
+    bool loading = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final cs = Theme.of(context).colorScheme;
+          final effectiveDays = isCustom ? (int.tryParse(customDaysCtrl.text.trim()) ?? 30) : selectedDays;
+          final baseDate = t.isOverdue || t.expiresAt == null ? DateTime.now() : t.expiresAt!;
+          final newExpiry = baseDate.add(Duration(days: effectiveDays));
+
+          return AlertDialog(
+            title: Text('Renew ${t.name}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Extend business subscription upon payment confirmation.',
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(children: [
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text('Current Expiry:', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                        Text(
+                          t.expiresAt != null ? fmtDate(t.expiresAt!) : 'No active date',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: t.isOverdue ? cs.error : null),
+                        ),
+                      ]),
+                      const SizedBox(height: 6),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text('New Expiry (+${effectiveDays}d):', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                        Text(
+                          fmtDate(newExpiry),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: StatusColors.synced),
+                        ),
+                      ]),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Select Extension Term:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('+30 Days (1 Mo)'),
+                        selected: !isCustom && selectedDays == 30,
+                        onSelected: (_) => setModalState(() {
+                          isCustom = false;
+                          selectedDays = 30;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('+60 Days (2 Mo)'),
+                        selected: !isCustom && selectedDays == 60,
+                        onSelected: (_) => setModalState(() {
+                          isCustom = false;
+                          selectedDays = 60;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('+90 Days (3 Mo)'),
+                        selected: !isCustom && selectedDays == 90,
+                        onSelected: (_) => setModalState(() {
+                          isCustom = false;
+                          selectedDays = 90;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('+180 Days (6 Mo)'),
+                        selected: !isCustom && selectedDays == 180,
+                        onSelected: (_) => setModalState(() {
+                          isCustom = false;
+                          selectedDays = 180;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('+365 Days (1 Yr)'),
+                        selected: !isCustom && selectedDays == 365,
+                        onSelected: (_) => setModalState(() {
+                          isCustom = false;
+                          selectedDays = 365;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Custom'),
+                        selected: isCustom,
+                        onSelected: (_) => setModalState(() => isCustom = true),
+                      ),
+                    ],
+                  ),
+                  if (isCustom) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: customDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Custom Days to Add',
+                        prefixIcon: Icon(Icons.date_range_rounded),
+                      ),
+                      onChanged: (_) => setModalState(() {}),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: loading ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: loading
+                    ? null
+                    : () async {
+                        setModalState(() => loading = true);
+                        try {
+                          await sb.rpc('super_admin_set_business_status', params: {
+                            'p_org_id': t.id,
+                            'p_status': 'active',
+                            'p_extend_days': effectiveDays,
+                          });
+                          ref.invalidate(tenantsProvider);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (context.mounted) {
+                            FriendlyError.showSuccess(
+                              context,
+                              'Subscription for "${t.name}" renewed (+$effectiveDays days)!',
+                            );
+                          }
+                        } catch (e) {
+                          setModalState(() => loading = false);
+                          if (context.mounted) {
+                            FriendlyError.show(context, e, title: 'Renewal Failed');
+                          }
+                        }
+                      },
+                child: loading
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text('Confirm Renewal (+${effectiveDays}d)'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _openEditBusinessDialog(BuildContext context, TenantOverview t) async {
@@ -510,6 +866,9 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
     final passCtrl = TextEditingController(text: 'Owner1234');
     final phoneCtrl = TextEditingController();
     final feeCtrl = TextEditingController(text: '1000');
+    final customDaysCtrl = TextEditingController(text: '30');
+    int durationDays = 30;
+    bool isCustom = false;
     bool loading = false;
     String? dialogError;
 
@@ -523,6 +882,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (dialogError != null) ...[
                     Container(
@@ -581,6 +941,63 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'Monthly Rent (ETB)', prefixIcon: Icon(Icons.attach_money_rounded)),
                   ),
+                  const SizedBox(height: 14),
+                  const Text('Initial Subscription Plan:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('1 Month (30d)'),
+                        selected: !isCustom && durationDays == 30,
+                        onSelected: (_) => setState(() {
+                          isCustom = false;
+                          durationDays = 30;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('3 Months (90d)'),
+                        selected: !isCustom && durationDays == 90,
+                        onSelected: (_) => setState(() {
+                          isCustom = false;
+                          durationDays = 90;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('6 Months (180d)'),
+                        selected: !isCustom && durationDays == 180,
+                        onSelected: (_) => setState(() {
+                          isCustom = false;
+                          durationDays = 180;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('1 Year (365d)'),
+                        selected: !isCustom && durationDays == 365,
+                        onSelected: (_) => setState(() {
+                          isCustom = false;
+                          durationDays = 365;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Custom'),
+                        selected: isCustom,
+                        onSelected: (_) => setState(() => isCustom = true),
+                      ),
+                    ],
+                  ),
+                  if (isCustom) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: customDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Custom Days (e.g. 14, 60)', prefixIcon: Icon(Icons.date_range_rounded)),
+                      onChanged: (v) => setState(() {
+                        durationDays = int.tryParse(v.trim()) ?? 30;
+                      }),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -603,6 +1020,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                           final email = emailCtrl.text.trim().toLowerCase();
                           final pass = passCtrl.text.trim();
                           final ownerName = ownerNameCtrl.text.trim().isNotEmpty ? ownerNameCtrl.text.trim() : 'Owner';
+                          final finalDays = isCustom ? (int.tryParse(customDaysCtrl.text.trim()) ?? 30) : durationDays;
 
                           // 1. Provision account via GoTrue HTTP API
                           final ownerUid = await _signupOwnerAccount(email, pass, ownerName);
@@ -616,7 +1034,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                             'p_temporary_password': pass,
                             'p_contact_phone': phoneCtrl.text.trim(),
                             'p_subscription_fee': fee,
-                            'p_duration_days': 30,
+                            'p_duration_days': finalDays,
                           });
 
                           ref.invalidate(tenantsProvider);
@@ -624,7 +1042,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                           if (context.mounted) {
                             FriendlyError.showSuccess(
                               context,
-                              'Business "${nameCtrl.text.trim()}" onboarded successfully!',
+                              'Business "${nameCtrl.text.trim()}" onboarded successfully for $finalDays days!',
                             );
                           }
                         } catch (e) {

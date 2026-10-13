@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/config.dart';
 import 'core/theme.dart';
+import 'core/utils.dart';
 import 'state/providers.dart';
 import 'state/security_provider.dart';
+import 'state/sms_station_provider.dart';
 import 'ui/auth_screen.dart';
 import 'ui/lock_screen.dart';
 import 'ui/manager/manager_shell.dart';
@@ -62,7 +64,10 @@ class Gate extends ConsumerWidget {
       return const SuspendedAccessScreen(key: ValueKey('suspended'));
     }
 
-    // 3. Regular Owner/Manager or Waiter
+    // 3. Ensure SMS Station is actively listening by default
+    ref.watch(smsStationProvider);
+
+    // 4. Regular Owner/Manager or Waiter
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       child: user.isManager
@@ -80,6 +85,20 @@ class SuspendedAccessScreen extends ConsumerWidget {
     final user = ref.watch(authProvider);
     final cs = Theme.of(context).colorScheme;
 
+    final isPaused = user?.orgStatus == 'paused';
+    final isExpired = user?.subscriptionExpiresAt != null && user!.subscriptionExpiresAt!.isBefore(DateTime.now());
+
+    final title = isPaused
+        ? 'Service Paused'
+        : (isExpired ? 'Subscription Expired' : 'Access Suspended');
+    final orgName = user?.orgName ?? 'your business';
+    final expiry = user?.subscriptionExpiresAt;
+    final message = isPaused
+        ? 'The account for "$orgName" has been temporarily paused by admin.'
+        : (isExpired && expiry != null
+            ? 'The subscription for "$orgName" expired on ${fmtDateTime(expiry)}. Please contact support to renew.'
+            : 'The subscription for "$orgName" is currently suspended. Please contact platform support.');
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -91,19 +110,25 @@ class SuspendedAccessScreen extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: cs.errorContainer.withValues(alpha: 0.6),
+                  color: isPaused
+                      ? cs.primaryContainer.withValues(alpha: 0.6)
+                      : cs.errorContainer.withValues(alpha: 0.6),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.lock_clock_rounded, size: 64, color: cs.onErrorContainer),
+                child: Icon(
+                  isPaused ? Icons.pause_circle_filled_rounded : Icons.lock_clock_rounded,
+                  size: 64,
+                  color: isPaused ? cs.onPrimaryContainer : cs.onErrorContainer,
+                ),
               ),
               const SizedBox(height: 24),
               Text(
-                'Service Suspended',
+                title,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 12),
               Text(
-                'The subscription for "${user?.orgName ?? "your business"}" is currently inactive or overdue.',
+                message,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 15, color: cs.onSurfaceVariant),
               ),

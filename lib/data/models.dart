@@ -137,7 +137,12 @@ class AppUser {
   bool get isSuperAdmin => role == 'super_admin';
   bool get isManager => role == 'manager' || role == 'owner' || role == 'super_admin';
   bool get isOwner => role == 'owner' || role == 'super_admin';
-  bool get isSuspended => orgStatus == 'suspended' || orgStatus == 'expired';
+  bool get isSuspended =>
+      !isSuperAdmin &&
+      (orgStatus == 'suspended' ||
+          orgStatus == 'expired' ||
+          orgStatus == 'paused' ||
+          (subscriptionExpiresAt != null && subscriptionExpiresAt!.isBefore(DateTime.now())));
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -189,7 +194,11 @@ class TenantOverview {
 
   bool get isExpired => status == 'expired' || (expiresAt != null && expiresAt!.isBefore(DateTime.now()));
   bool get isSuspended => status == 'suspended';
-  bool get isActive => status == 'active' && !isExpired;
+  bool get isPaused => status == 'paused';
+  bool get isActive => (status == 'active' || status == 'trial') && !isExpired;
+  int get daysRemaining => expiresAt != null ? expiresAt!.difference(DateTime.now()).inDays : 0;
+  bool get isDueSoon => isActive && expiresAt != null && daysRemaining <= 3 && daysRemaining >= 0;
+  bool get isOverdue => expiresAt != null && DateTime.now().isAfter(expiresAt!);
 
   factory TenantOverview.fromJson(Map<String, dynamic> j) => TenantOverview(
         id: j['id'] as String,

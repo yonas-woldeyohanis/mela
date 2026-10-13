@@ -262,3 +262,40 @@ $$;
 
 grant execute on function public.super_admin_get_overview to authenticated;
 
+-- 5. ALLOW 'paused' STATUS & PROFESSIONAL SUBSCRIPTION CONTROL
+alter table public.organizations drop constraint if exists organizations_status_check;
+alter table public.organizations add constraint organizations_status_check 
+  check (status in ('active', 'suspended', 'trial', 'expired', 'paused'));
+
+create or replace function public.super_admin_set_business_status(
+  p_org_id uuid,
+  p_status text,
+  p_extend_days integer default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new_expiry timestamptz;
+begin
+  if not is_super_admin() then raise exception 'Access denied.'; end if;
+
+  if p_status not in ('active', 'suspended', 'trial', 'expired', 'paused') then
+    raise exception 'Invalid status value: %', p_status;
+  end if;
+
+  if p_extend_days is not null and p_extend_days > 0 then
+    v_new_expiry := greatest(now(), coalesce((select expires_at from public.organizations where id = p_org_id), now())) + (p_extend_days || ' days')::interval;
+    update public.organizations set status = p_status, expires_at = v_new_expiry where id = p_org_id;
+  else
+    update public.organizations set status = p_status where id = p_org_id;
+  end if;
+
+  return jsonb_build_object('success', true, 'org_id', p_org_id, 'status', p_status);
+end;
+$$;
+
+grant execute on function public.super_admin_set_business_status to authenticated;
+

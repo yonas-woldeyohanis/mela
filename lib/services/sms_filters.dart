@@ -16,42 +16,65 @@ class SmsFilterConfig {
     'telebirr',
     'ethiotelecom',
     'ethio telecom',
+    'mpesa',
+    'm-pesa',
+    'safaricom',
 
-    // Major Commercial Banks
+    // Major Commercial Banks & Wallets
     'cbe',
     'cbebirr',
     'cbe birr',
     'commercial bank of ethiopia',
     '889',
     '881',
+    '8899',
     'awash',
     'awashbank',
     'dashen',
+    'dashenbank',
     'amole',
     'abyssinia',
     'boa',
+    'apollo',
     'sinqee',
     'siinqee',
+    'siinqeebank',
     'wegagen',
+    'wegagenbank',
     'hibret',
+    'hibretbank',
     'unitedbank',
     'berhan',
+    'berhanbank',
     'coop',
     'coopbank',
+    'coopay',
+    'coopay-ebirr',
     'oromia',
     'oromiabank',
     'nib',
     'nibbank',
     'zemen',
+    'zemenbank',
     'enat',
+    'enatbank',
     'global',
+    'globalbank',
     'tsedey',
+    'tsedeybank',
     'amhara',
+    'amharabank',
     'gadaa',
+    'gadaabank',
     'hijra',
+    'hijrabank',
     'zamzam',
+    'zamzambank',
     'rammis',
+    'rammisbank',
     'sidama',
+    'sidamabank',
+    'shabelle',
   ];
 
   /// Keywords in the SMS text indicating MONEY RECEIVED into the business account.
@@ -63,22 +86,36 @@ class SmsFilterConfig {
     'deposit',
     'deposited',
     'transferred to',
+    'transferred into',
     'transfer to end user',
     'payment received',
+    'payment from',
     'successful credit',
     'incoming payment',
+    'fund transfer',
     'txn id',
     'transaction number',
     'ref no',
     'reference no',
+    'trans ref',
 
     // Amharic (Ethiopic)
     'ደርሶዎታል', // received
     'ገቢ ተደርጓል', // credited
-    'ገቢ', // deposit
+    'ገቢ ሆኗል', // credited/deposited
+    'ገቢ', // deposit/incoming
     'ተላልፏል', // transferred
     'የግብይት ቁጥር', // transaction number
     'ሒሳብዎ ገቢ', // your account credited
+    'ክፍያ ደርሶዎታል', // payment received
+    'ክፍያ ተፈጽሟል', // payment made
+    'የገንዘብ ዝውውር', // money transfer
+
+    // Afaan Oromoo
+    'galii ta\'eera',
+    'galii taheera',
+    'herrega keessan',
+    'isin ga\'eera',
   ];
 
   /// Noise keywords to REJECT immediately (OTPs, promos, personal texts, debits/expenses).
