@@ -19,7 +19,7 @@ class ParsedReceipt {
 
 class OcrParser {
   static const _n = r'([0-9][0-9,]*(?:\.[0-9]{1,2})?)';
-  static const _cur = r'(?:ETB|Birr|Br\.?|ብር)?\s*';
+  static const _cur = r'(?:ETB|Birr|Br\.?|ብር|Qarshii)?\s*';
 
   static final _providers = <String, RegExp>{
     'Telebirr': RegExp(r'tele\s?birr|ethio\s?telecom|ቴሌብር|ethiopian\s+telecom', caseSensitive: false),
@@ -126,6 +126,18 @@ class OcrParser {
       }
     }
     // Fallback if not labeled
+    if (reference == null) {
+      final urlCbe = RegExp(r'mbreciept\.cbe\.com\.et\/([A-Za-z0-9_\-]+)', caseSensitive: false).firstMatch(text);
+      if (urlCbe != null) {
+        reference = urlCbe.group(1)?.trim();
+      }
+    }
+    if (reference == null) {
+      final urlTrx = RegExp(r'(?:slip/\?trx=|trx=)([A-Za-z0-9]{8,24})', caseSensitive: false).firstMatch(text);
+      if (urlTrx != null) {
+        reference = urlTrx.group(1)?.trim().toUpperCase();
+      }
+    }
     if (reference == null) {
       final matches = _refFallback.allMatches(text.toUpperCase()).map((m) => m.group(0)!).toList();
       for (final candidate in matches) {

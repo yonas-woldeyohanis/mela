@@ -345,33 +345,43 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                       ],
                       const SizedBox(height: 14),
 
-                      // Action Controls: Renew / Extend, Suspend / Restore, Pause / Resume, Edit, Key, Delete
+                      // Action Controls: Tier 1 (Renew & Suspend) and Tier 2 (Pause & Management)
                       Row(children: [
                         Expanded(
                           child: FilledButton.tonalIcon(
                             icon: const Icon(Icons.more_time_rounded, size: 18),
-                            label: const Text('Renew / Extend'),
+                            label: const Text('Renew / Extend', maxLines: 1),
                             onPressed: () => _openRenewSubscriptionDialog(context, t),
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: FilledButton.tonalIcon(
                             style: FilledButton.styleFrom(
                               foregroundColor: t.isSuspended ? cs.primary : cs.error,
                             ),
-                            icon: Icon(t.isSuspended ? Icons.check_circle_outline_rounded : Icons.block_rounded, size: 18),
-                            label: Text(t.isSuspended ? 'Restore' : 'Suspend'),
+                            icon: Icon(
+                              t.isSuspended ? Icons.check_circle_outline_rounded : Icons.block_rounded,
+                              size: 18,
+                            ),
+                            label: Text(t.isSuspended ? 'Restore' : 'Suspend', maxLines: 1),
                             onPressed: () => _toggleSuspend(context, t, !t.isSuspended),
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        IconButton.filledTonal(
-                          tooltip: t.isPaused ? 'Resume Service' : 'Pause Service',
-                          icon: Icon(t.isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 18),
-                          onPressed: () => _togglePause(context, t, !t.isPaused),
+                      ]),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: Icon(
+                              t.isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                              size: 18,
+                            ),
+                            label: Text(t.isPaused ? 'Resume Service' : 'Pause Service', maxLines: 1),
+                            onPressed: () => _togglePause(context, t, !t.isPaused),
+                          ),
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 8),
                         IconButton.filledTonal(
                           tooltip: 'Edit Business',
                           icon: const Icon(Icons.edit_outlined, size: 18),

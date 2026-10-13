@@ -95,9 +95,16 @@ class SmsFilterConfig {
     'fund transfer',
     'txn id',
     'transaction number',
+    'transaction id',
+    'by transaction number',
+    'has been credited',
+    'has been credited with',
     'ref no',
     'reference no',
     'trans ref',
+    'mbreciept',
+    'receipt:',
+    'slip/?trx=',
 
     // Amharic (Ethiopic)
     'ደርሶዎታል', // received
