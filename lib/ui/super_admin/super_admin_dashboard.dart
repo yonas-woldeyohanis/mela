@@ -13,14 +13,24 @@ import '../widgets.dart';
 
 final tenantsProvider = FutureProvider.autoDispose<List<TenantOverview>>((ref) async {
   final res = await sb.rpc('super_admin_get_overview');
+  List raw = [];
   if (res is Map && res['businesses'] is List) {
-    final list = res['businesses'] as List;
-    return list.map((e) => TenantOverview.fromJson(e as Map<String, dynamic>)).toList();
+    raw = res['businesses'] as List;
+  } else if (res is List) {
+    raw = res;
   }
-  if (res is List) {
-    return res.map((e) => TenantOverview.fromJson(e as Map<String, dynamic>)).toList();
+
+  // Deduplicate by business id so each registered business appears only once
+  final Map<String, TenantOverview> unique = {};
+  for (final item in raw) {
+    if (item is Map) {
+      final t = TenantOverview.fromJson(Map<String, dynamic>.from(item));
+      if (!unique.containsKey(t.id)) {
+        unique[t.id] = t;
+      }
+    }
   }
-  return [];
+  return unique.values.toList();
 });
 
 class SuperAdminDashboardScreen extends ConsumerStatefulWidget {

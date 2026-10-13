@@ -215,3 +215,50 @@ $$;
 
 grant execute on function public.super_admin_create_business to authenticated;
 grant execute on function public.super_admin_reset_owner_password(uuid, uuid, text) to authenticated;
+
+-- 4. FIX super_admin_get_overview DUPLICATE ROWS
+create or replace function public.super_admin_get_overview()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_result jsonb;
+begin
+  if not is_super_admin() then raise exception 'Access denied.'; end if;
+
+  select jsonb_build_object(
+    'businesses', coalesce(jsonb_agg(row_to_json(b)), '[]'::jsonb),
+    'total_businesses', count(*),
+    'active_businesses', count(*) filter (where b.status = 'active'),
+    'suspended_businesses', count(*) filter (where b.status <> 'active'),
+    'estimated_monthly_income_etb', coalesce(sum(b.subscription_fee) filter (where b.status = 'active'), 0)
+  ) into v_result
+  from (
+    select distinct on (o.id)
+      o.id,
+      o.name,
+      o.join_code,
+      o.status,
+      coalesce(o.subscription_fee, 1000.00) as subscription_fee,
+      o.expires_at,
+      o.contact_phone,
+      o.contact_person,
+      o.created_at,
+      (select p.id from public.profiles p where p.org_id = o.id and p.role = 'owner' limit 1) as owner_id,
+      (select u.email from public.profiles p join auth.users u on u.id = p.id where p.org_id = o.id and p.role = 'owner' limit 1) as owner_email,
+      (select count(*) from public.profiles p where p.org_id = o.id and p.role <> 'owner') as staff_count,
+      (select count(*) from public.transactions t where t.org_id = o.id) as tx_count,
+      (select coalesce(sum(t.amount), 0) from public.transactions t where t.org_id = o.id) as total_revenue
+    from public.organizations o
+    where o.name not in ('Mela Master Admin', 'SwiftReceipt Master Admin')
+    order by o.id, o.created_at desc
+  ) b;
+
+  return coalesce(v_result, '{"businesses":[]}'::jsonb);
+end;
+$$;
+
+grant execute on function public.super_admin_get_overview to authenticated;
+

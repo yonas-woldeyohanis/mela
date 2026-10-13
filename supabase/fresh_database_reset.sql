@@ -398,14 +398,20 @@ declare
 begin
   if not is_super_admin() then raise exception 'Access denied.'; end if;
 
-  select jsonb_agg(row_to_json(b)) into v_result
+  select jsonb_build_object(
+    'businesses', coalesce(jsonb_agg(row_to_json(b)), '[]'::jsonb),
+    'total_businesses', count(*),
+    'active_businesses', count(*) filter (where b.status = 'active'),
+    'suspended_businesses', count(*) filter (where b.status <> 'active'),
+    'estimated_monthly_income_etb', coalesce(sum(b.subscription_fee) filter (where b.status = 'active'), 0)
+  ) into v_result
   from (
-    select 
+    select distinct on (o.id)
       o.id,
       o.name,
       o.join_code,
       o.status,
-      o.subscription_fee,
+      coalesce(o.subscription_fee, 1000.00) as subscription_fee,
       o.expires_at,
       o.contact_phone,
       o.contact_person,
@@ -417,10 +423,10 @@ begin
       (select coalesce(sum(t.amount), 0) from public.transactions t where t.org_id = o.id) as total_revenue
     from public.organizations o
     where o.name not in ('Mela Master Admin', 'SwiftReceipt Master Admin')
-    order by o.created_at desc
+    order by o.id, o.created_at desc
   ) b;
 
-  return coalesce(v_result, '[]'::jsonb);
+  return coalesce(v_result, '{"businesses":[]}'::jsonb);
 end;
 $$;
 
