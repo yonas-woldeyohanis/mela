@@ -70,7 +70,23 @@ class _ManagerShellState extends ConsumerState<ManagerShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[_index]),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+            ),
+            const SizedBox(width: 10),
+            Text(_titles[_index]),
+          ],
+        ),
         actions: [
           if (user.isManager)
             IconButton(

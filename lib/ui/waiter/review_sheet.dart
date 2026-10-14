@@ -132,7 +132,13 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Confirm payment', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                Row(
+                  children: [
+                    Image.asset('assets/images/logo.png', width: 22, height: 22),
+                    const SizedBox(width: 8),
+                    Text('Confirm payment', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  ],
+                ),
                 const SizedBox(height: 6),
                 StatusPill(
                   totalImportant == 4
@@ -149,12 +155,47 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
             final user = ref.watch(authProvider);
             final warnings = <String>[];
 
-            // 1. Check receiver name against business name
-            if (widget.parsed.receiver != null && user != null && user.orgName.isNotEmpty) {
-              final rec = widget.parsed.receiver!.toLowerCase();
-              final org = user.orgName.toLowerCase();
-              if (!rec.contains(org) && !org.contains(rec)) {
-                warnings.add('Receiver mismatch: receipt states "${widget.parsed.receiver}" instead of "${user.orgName}".');
+            // 1. Check receiver name against business name & registered account holder name
+            if (widget.parsed.receiver != null && user != null) {
+              final rec = widget.parsed.receiver!.toLowerCase().trim();
+              final org = user.orgName.toLowerCase().trim();
+              final holder = (user.accountHolderName ?? '').toLowerCase().trim();
+
+              bool matches = false;
+              // Check trade / business name
+              if (org.isNotEmpty && (rec.contains(org) || org.contains(rec))) {
+                matches = true;
+              }
+
+              // Check registered bank / wallet account holder name(s)
+              if (!matches && holder.isNotEmpty) {
+                final names = holder.split(RegExp(r'[,;/]')).map((s) => s.trim()).where((s) => s.isNotEmpty);
+                for (final name in names) {
+                  if (rec.contains(name) || name.contains(rec)) {
+                    matches = true;
+                    break;
+                  }
+                  final recTokens = rec.split(RegExp(r'\s+')).where((t) => t.length > 2).toSet();
+                  final nameTokens = name.split(RegExp(r'\s+')).where((t) => t.length > 2).toSet();
+                  if (recTokens.intersection(nameTokens).length >= 2) {
+                    matches = true;
+                    break;
+                  }
+                }
+              }
+
+              // Fallback check against owner full name
+              if (!matches && user.fullName.isNotEmpty) {
+                final ownerTokens = user.fullName.toLowerCase().split(RegExp(r'\s+')).where((t) => t.length > 2).toSet();
+                final recTokens = rec.split(RegExp(r'\s+')).where((t) => t.length > 2).toSet();
+                if (recTokens.intersection(ownerTokens).length >= 2) {
+                  matches = true;
+                }
+              }
+
+              if (!matches && (org.isNotEmpty || holder.isNotEmpty)) {
+                final expected = holder.isNotEmpty ? '${user.orgName} (Account: $holder)' : user.orgName;
+                warnings.add('Receiver mismatch: receipt states "${widget.parsed.receiver}" instead of "$expected".');
               }
             }
 

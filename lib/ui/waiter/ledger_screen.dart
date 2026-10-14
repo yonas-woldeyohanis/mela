@@ -28,7 +28,23 @@ class _LedgerScreenState extends ConsumerState<LedgerScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Shift & Analytics'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+            ),
+            const SizedBox(width: 10),
+            const Text('My Shift & Analytics'),
+          ],
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(

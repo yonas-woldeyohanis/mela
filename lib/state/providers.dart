@@ -103,19 +103,38 @@ class AuthNotifier extends Notifier<AppUser?> {
     final uid = sb.auth.currentUser?.id;
     if (uid == null) return;
     try {
-      final row = await sb
-          .from('profiles')
-          .select('id, org_id, full_name, role, organizations(name, join_code, status, expires_at)')
-          .eq('id', uid)
-          .single();
+      Map<String, dynamic> row;
+      try {
+        row = await sb
+            .from('profiles')
+            .select('id, org_id, full_name, role, organizations(name, join_code, status, expires_at, account_holder_name)')
+            .eq('id', uid)
+            .single();
+      } catch (_) {
+        row = await sb
+            .from('profiles')
+            .select('id, org_id, full_name, role, organizations(name, join_code, status, expires_at)')
+            .eq('id', uid)
+            .single();
+      }
+
       final org = row['organizations'] as Map<String, dynamic>;
+      final orgId = row['org_id'] as String;
+      final localHolder = ref.read(prefsProvider).getString('local_account_holder_$orgId');
+      final cloudHolder = (org['account_holder_name'] as String?)?.trim();
+      final effectiveHolder = (cloudHolder != null && cloudHolder.isNotEmpty) ? cloudHolder : localHolder;
+      if (cloudHolder != null && cloudHolder.isNotEmpty) {
+        ref.read(prefsProvider).setString('local_account_holder_$orgId', cloudHolder);
+      }
+
       final u = AppUser(
         id: row['id'] as String,
-        orgId: row['org_id'] as String,
+        orgId: orgId,
         fullName: row['full_name'] as String,
         role: row['role'] as String,
         orgName: org['name'] as String,
         joinCode: (org['join_code'] as String?) ?? '',
+        accountHolderName: effectiveHolder,
         orgStatus: (org['status'] as String?) ?? 'active',
         subscriptionExpiresAt: org['expires_at'] != null ? DateTime.tryParse(org['expires_at'] as String) : null,
       );
@@ -123,6 +142,22 @@ class AuthNotifier extends Notifier<AppUser?> {
       state = u;
     } catch (e) {
       debugPrint('profile refresh failed: $e');
+    }
+  }
+
+  Future<void> updateAccountHolderName(String name) async {
+    final cur = state;
+    if (cur == null) return;
+    final trimmed = name.trim();
+    ref.read(prefsProvider).setString('local_account_holder_${cur.orgId}', trimmed);
+    state = cur.copyWith(accountHolderName: trimmed);
+    ref.read(prefsProvider).setString(_cacheKey, jsonEncode(state!.toJson()));
+    try {
+      await sb.rpc('update_org_account_holder', params: {'p_account_holder_name': trimmed});
+    } catch (_) {
+      try {
+        await sb.from('organizations').update({'account_holder_name': trimmed}).eq('id', cur.orgId);
+      } catch (_) {}
     }
   }
 

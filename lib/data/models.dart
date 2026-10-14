@@ -157,13 +157,38 @@ class AppUser {
     required this.role,
     required this.orgName,
     required this.joinCode,
+    this.accountHolderName,
     this.orgStatus = 'active',
     this.subscriptionExpiresAt,
   });
 
   final String id, orgId, fullName, role, orgName, joinCode;
+  final String? accountHolderName;
   final String orgStatus;
   final DateTime? subscriptionExpiresAt;
+
+  AppUser copyWith({
+    String? id,
+    String? orgId,
+    String? fullName,
+    String? role,
+    String? orgName,
+    String? joinCode,
+    String? accountHolderName,
+    String? orgStatus,
+    DateTime? subscriptionExpiresAt,
+  }) =>
+      AppUser(
+        id: id ?? this.id,
+        orgId: orgId ?? this.orgId,
+        fullName: fullName ?? this.fullName,
+        role: role ?? this.role,
+        orgName: orgName ?? this.orgName,
+        joinCode: joinCode ?? this.joinCode,
+        accountHolderName: accountHolderName ?? this.accountHolderName,
+        orgStatus: orgStatus ?? this.orgStatus,
+        subscriptionExpiresAt: subscriptionExpiresAt ?? this.subscriptionExpiresAt,
+      );
 
   bool get isSuperAdmin => role == 'super_admin';
   bool get isManager => role == 'manager' || role == 'owner' || role == 'super_admin';
@@ -182,6 +207,7 @@ class AppUser {
         'role': role,
         'org_name': orgName,
         'join_code': joinCode,
+        'account_holder_name': accountHolderName,
         'org_status': orgStatus,
         'expires_at': subscriptionExpiresAt?.toIso8601String(),
       };
@@ -193,6 +219,7 @@ class AppUser {
         role: j['role'] as String,
         orgName: j['org_name'] as String,
         joinCode: j['join_code'] as String,
+        accountHolderName: j['account_holder_name'] as String?,
         orgStatus: (j['org_status'] as String?) ?? 'active',
         subscriptionExpiresAt: j['expires_at'] != null ? DateTime.tryParse(j['expires_at'] as String) : null,
       );
@@ -205,6 +232,7 @@ class TenantOverview {
     required this.joinCode,
     required this.status,
     required this.subscriptionFee,
+    this.accountHolderName,
     this.expiresAt,
     this.contactPhone,
     this.contactPerson,
@@ -217,6 +245,7 @@ class TenantOverview {
   });
 
   final String id, name, joinCode, status;
+  final String? accountHolderName;
   final double subscriptionFee;
   final DateTime? expiresAt, createdAt;
   final String? contactPhone, contactPerson, ownerEmail, ownerId;
@@ -237,6 +266,7 @@ class TenantOverview {
         joinCode: (j['join_code'] as String?) ?? '',
         status: (j['status'] as String?) ?? 'active',
         subscriptionFee: (j['subscription_fee'] as num?)?.toDouble() ?? 1000.0,
+        accountHolderName: j['account_holder_name'] as String?,
         expiresAt: j['expires_at'] != null ? DateTime.tryParse(j['expires_at'] as String) : null,
         createdAt: j['created_at'] != null ? DateTime.tryParse(j['created_at'] as String) : null,
         contactPhone: j['contact_phone'] as String?,

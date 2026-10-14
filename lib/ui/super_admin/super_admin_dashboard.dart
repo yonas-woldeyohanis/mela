@@ -51,7 +51,23 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Super Admin Platform', style: TextStyle(fontWeight: FontWeight.w800)),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+            ),
+            const SizedBox(width: 10),
+            const Text('Super Admin Platform', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Platform Settings & Security',
@@ -237,6 +253,18 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(t.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                            if (t.accountHolderName != null && t.accountHolderName!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2, bottom: 2),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.account_balance_rounded, size: 13, color: cs.primary),
+                                    const SizedBox(width: 4),
+                                    Text('Account: ${t.accountHolderName}',
+                                        style: TextStyle(color: cs.primary, fontSize: 12, fontWeight: FontWeight.w700)),
+                                  ],
+                                ),
+                              ),
                             Text('Join Code: ${t.joinCode}  ·  Staff: ${t.staffCount}  ·  ${t.txCount} receipts',
                                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
                           ]),
@@ -681,6 +709,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
 
   Future<void> _openEditBusinessDialog(BuildContext context, TenantOverview t) async {
     final nameCtrl = TextEditingController(text: t.name);
+    final accountHolderCtrl = TextEditingController(text: t.accountHolderName ?? '');
     final contactPersonCtrl = TextEditingController(text: t.contactPerson ?? '');
     final contactPhoneCtrl = TextEditingController(text: t.contactPhone ?? '');
     final feeCtrl = TextEditingController(text: t.subscriptionFee.toStringAsFixed(0));
@@ -698,6 +727,17 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                 TextField(
                   controller: nameCtrl,
                   decoration: const InputDecoration(labelText: 'Business Name', prefixIcon: Icon(Icons.storefront_rounded)),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: accountHolderCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Bank Account Holder Name(s)',
+                    hintText: 'e.g. BETELHEM FKADU CHALA',
+                    helperText: 'Name on CBE / Telebirr slips (prevents false fraud warnings)',
+                    prefixIcon: Icon(Icons.account_balance_rounded),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -728,13 +768,29 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                       setState(() => loading = true);
                       try {
                         final fee = double.tryParse(feeCtrl.text.trim()) ?? t.subscriptionFee;
-                        await sb.rpc('super_admin_edit_business', params: {
-                          'p_org_id': t.id,
-                          'p_business_name': nameCtrl.text.trim(),
-                          'p_contact_person': contactPersonCtrl.text.trim(),
-                          'p_contact_phone': contactPhoneCtrl.text.trim(),
-                          'p_subscription_fee': fee,
-                        });
+                        final holder = accountHolderCtrl.text.trim();
+                        try {
+                          await sb.rpc('super_admin_edit_business', params: {
+                            'p_org_id': t.id,
+                            'p_business_name': nameCtrl.text.trim(),
+                            'p_contact_person': contactPersonCtrl.text.trim(),
+                            'p_contact_phone': contactPhoneCtrl.text.trim(),
+                            'p_subscription_fee': fee,
+                            'p_account_holder_name': holder,
+                          });
+                        } catch (_) {
+                          await sb.rpc('super_admin_edit_business', params: {
+                            'p_org_id': t.id,
+                            'p_business_name': nameCtrl.text.trim(),
+                            'p_contact_person': contactPersonCtrl.text.trim(),
+                            'p_contact_phone': contactPhoneCtrl.text.trim(),
+                            'p_subscription_fee': fee,
+                          });
+                        }
+                        try {
+                          await sb.from('organizations').update({'account_holder_name': holder}).eq('id', t.id);
+                        } catch (_) {}
+
                         ref.invalidate(tenantsProvider);
                         if (ctx.mounted) Navigator.pop(ctx);
                         if (context.mounted) {
@@ -871,6 +927,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
 
   Future<void> _openCreateBusinessDialog(BuildContext context) async {
     final nameCtrl = TextEditingController();
+    final accountHolderCtrl = TextEditingController();
     final ownerNameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final passCtrl = TextEditingController(text: 'Owner1234');
@@ -922,6 +979,17 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                   TextField(
                     controller: nameCtrl,
                     decoration: const InputDecoration(labelText: 'Business Name *', prefixIcon: Icon(Icons.storefront_rounded)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: accountHolderCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Bank Account Holder Name(s)',
+                      hintText: 'e.g. BETELHEM FKADU CHALA (Name on slips)',
+                      helperText: 'Prevents fraud warnings when customers transfer',
+                      prefixIcon: Icon(Icons.account_balance_rounded),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
@@ -1032,20 +1100,43 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                           final ownerName = ownerNameCtrl.text.trim().isNotEmpty ? ownerNameCtrl.text.trim() : 'Owner';
                           final finalDays = isCustom ? (int.tryParse(customDaysCtrl.text.trim()) ?? 30) : durationDays;
 
+                          final accountHolder = accountHolderCtrl.text.trim();
+
                           // 1. Provision account via GoTrue HTTP API
                           final ownerUid = await _signupOwnerAccount(email, pass, ownerName);
 
                           // 2. Link business and owner in Supabase DB
-                          await sb.rpc('super_admin_create_business', params: {
-                            'p_business_name': nameCtrl.text.trim(),
-                            'p_owner_id': ownerUid,
-                            'p_owner_email': email,
-                            'p_owner_name': ownerName,
-                            'p_temporary_password': pass,
-                            'p_contact_phone': phoneCtrl.text.trim(),
-                            'p_subscription_fee': fee,
-                            'p_duration_days': finalDays,
-                          });
+                          dynamic rpcRes;
+                          try {
+                            rpcRes = await sb.rpc('super_admin_create_business', params: {
+                              'p_business_name': nameCtrl.text.trim(),
+                              'p_owner_id': ownerUid,
+                              'p_owner_email': email,
+                              'p_owner_name': ownerName,
+                              'p_temporary_password': pass,
+                              'p_contact_phone': phoneCtrl.text.trim(),
+                              'p_subscription_fee': fee,
+                              'p_duration_days': finalDays,
+                              'p_account_holder_name': accountHolder.isNotEmpty ? accountHolder : null,
+                            });
+                          } catch (_) {
+                            rpcRes = await sb.rpc('super_admin_create_business', params: {
+                              'p_business_name': nameCtrl.text.trim(),
+                              'p_owner_id': ownerUid,
+                              'p_owner_email': email,
+                              'p_owner_name': ownerName,
+                              'p_temporary_password': pass,
+                              'p_contact_phone': phoneCtrl.text.trim(),
+                              'p_subscription_fee': fee,
+                              'p_duration_days': finalDays,
+                            });
+                          }
+
+                          if (accountHolder.isNotEmpty && rpcRes is Map && rpcRes['org_id'] != null) {
+                            try {
+                              await sb.from('organizations').update({'account_holder_name': accountHolder}).eq('id', rpcRes['org_id']);
+                            } catch (_) {}
+                          }
 
                           ref.invalidate(tenantsProvider);
                           if (ctx.mounted) Navigator.pop(ctx);

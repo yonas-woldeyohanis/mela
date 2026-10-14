@@ -33,12 +33,28 @@ class SettingsScreen extends ConsumerWidget {
     return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
       Panel(
         child: Row(children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: cs.primaryContainer,
-            child: Text(user.fullName.isEmpty ? '?' : user.fullName[0].toUpperCase(),
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onPrimaryContainer)),
-          ),
+          Stack(children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: cs.primaryContainer,
+              child: Text(user.fullName.isEmpty ? '?' : user.fullName[0].toUpperCase(),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onPrimaryContainer)),
+            ),
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: cs.surface, width: 2),
+                ),
+                child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+              ),
+            ),
+          ]),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -50,6 +66,45 @@ class SettingsScreen extends ConsumerWidget {
         ]),
       ),
       if (user.isManager && !user.isSuperAdmin) ...[
+        const SizedBox(height: 12),
+        Panel(
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: cs.secondaryContainer.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.account_balance_rounded, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Bank Account Holder Name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                Text(
+                  user.accountHolderName?.isNotEmpty == true
+                      ? user.accountHolderName!
+                      : 'Not configured (slips match "${user.orgName}")',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: user.accountHolderName?.isNotEmpty == true ? FontWeight.w700 : FontWeight.normal,
+                    color: user.accountHolderName?.isNotEmpty == true ? cs.primary : cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Name appearing on CBE / Telebirr slips. Prevents fraud warnings when customers transfer.',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ]),
+            ),
+            IconButton.filledTonal(
+              icon: const Icon(Icons.edit_rounded, size: 20),
+              tooltip: 'Edit Account Holder Name',
+              onPressed: () => _promptEditAccountHolder(context, ref, user.accountHolderName ?? ''),
+            ),
+          ]),
+        ),
         const SizedBox(height: 12),
         Panel(
           child: Row(children: [
@@ -436,7 +491,85 @@ class SettingsScreen extends ConsumerWidget {
         icon: const Icon(Icons.logout_rounded),
         label: const Text('Sign out'),
       ),
+      const SizedBox(height: 28),
+      Center(
+        child: Column(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Mela · Digital Receipt Ledger',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Instant Ethiopian Bank & Wallet Verification',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
     ]);
+  }
+
+  void _promptEditAccountHolder(BuildContext context, WidgetRef ref, String currentName) {
+    final ctrl = TextEditingController(text: currentName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.account_balance_rounded, size: 22),
+          SizedBox(width: 8),
+          Text('Account Holder Name'),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the registered account owner name(s) appearing on CBE, Telebirr, or Dashen payment slips:\n\n'
+              'When customers transfer money to this account name, Mela will automatically accept the receipt without fraud warnings.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Account Holder Name *',
+                hintText: 'e.g. BETELHEM FKADU CHALA',
+                helperText: 'Separate multiple names with commas',
+                prefixIcon: Icon(Icons.person_outline_rounded),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final newName = ctrl.text.trim();
+              await ref.read(authProvider.notifier).updateAccountHolderName(newName);
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (context.mounted) {
+                FriendlyError.showSuccess(context, 'Bank account holder name updated!');
+              }
+            },
+            child: const Text('Save Name'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _section(BuildContext context, String t) => Padding(
