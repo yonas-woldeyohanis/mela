@@ -10,6 +10,7 @@ import '../state/providers.dart';
 import '../state/security_provider.dart';
 import '../state/sms_station_provider.dart';
 import '../data/models.dart';
+import '../services/platform_config_service.dart';
 import '../services/telegram_service.dart';
 import 'widgets.dart';
 
@@ -205,11 +206,8 @@ class SettingsScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Contact Super Admin or support to renew or manage your monthly subscription.',
-                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-              ),
+              const SizedBox(height: 12),
+              const SupportContactCard(),
             ],
           ),
         ),
@@ -512,8 +510,8 @@ class SettingsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              'Instant Ethiopian Bank & Wallet Verification',
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              '© DropEffect Solutions · All rights reserved',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
             ),
           ],
         ),
@@ -825,6 +823,7 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
   bool _obscureToken = true;
   bool _isLoading = true;
   bool _isTesting = false;
+  bool _isEditing = false;
   String? _testMessage;
   bool? _testSuccess;
 
@@ -848,6 +847,7 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
         _tokenCtrl.text = token;
         _chatIdCtrl.text = chat;
         _isLoading = false;
+        _isEditing = token.isEmpty && chat.isEmpty;
       });
     }
   }
@@ -868,17 +868,23 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
     );
   }
 
+  Future<void> _saveSettings() async {
+    final chat = _chatIdCtrl.text.trim();
+    if (chat.isEmpty && _enabled) {
+      FriendlyError.show(context, 'Please enter a Channel or Group ID.');
+      return;
+    }
+    await _saveConfig();
+    setState(() => _isEditing = false);
+    if (mounted) {
+      FriendlyError.showSuccess(context, 'Telegram settings saved successfully!');
+    }
+  }
+
   Future<void> _testAndSave() async {
     final token = _tokenCtrl.text.trim();
     final chat = _chatIdCtrl.text.trim();
 
-    if (token.isEmpty) {
-      setState(() {
-        _testSuccess = false;
-        _testMessage = 'Please enter your Telegram Bot Token.';
-      });
-      return;
-    }
     if (chat.isEmpty) {
       setState(() {
         _testSuccess = false;
@@ -904,6 +910,7 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
       setState(() {
         _enabled = true;
         _isTesting = false;
+        _isEditing = false;
         _testSuccess = true;
         _testMessage = res.message;
       });
@@ -938,15 +945,15 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
                 'Store all receipt images completely free with unlimited cloud storage on Telegram:\n',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
-              Text('1. Open Telegram and search for @BotFather.'),
+              Text('1. A single bot (like @Mela_platformbot) can serve multiple hotels and businesses with zero collision.'),
               SizedBox(height: 6),
-              Text('2. Send /newbot, give your bot a name, and copy the HTTP API Token.'),
+              Text('2. Create a private Channel or Group for your business receipts (e.g. "My Hotel Receipts").'),
               SizedBox(height: 6),
-              Text('3. Create a private Channel or Group for your business receipts.'),
+              Text('3. Add the bot to your Channel as an Administrator with "Post Messages" permission.'),
               SizedBox(height: 6),
-              Text('4. Add your bot to the Channel as an Administrator with "Post Messages" permission.'),
+              Text('4. Paste your Bot Token (or platform bot) and Channel ID (@my_channel or -100...) here.'),
               SizedBox(height: 6),
-              Text('5. Copy the Channel link (e.g. @my_hotel_receipts) or Chat ID, paste both fields here, and tap "Test & Save".'),
+              Text('5. Tap "Save" or "Test Connection" to activate!'),
             ],
           ),
         ),
@@ -1019,17 +1026,33 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
           ),
           if (_enabled) ...[
             const Divider(height: 24),
-            Text(
-              'Every scanned receipt photo is automatically sent to your Telegram channel or group in the background when connected to the internet.',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.hub_rounded, size: 16, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Multi-Business Support: One platform bot can serve all businesses. Each business sets its own unique Channel ID with zero collision.',
+                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 14),
             TextField(
               controller: _tokenCtrl,
+              readOnly: !_isEditing,
               obscureText: _obscureToken,
               decoration: InputDecoration(
                 labelText: 'Telegram Bot Token',
-                hintText: '123456789:ABCdefGhI...',
+                hintText: 'Platform Bot Token or Custom Token',
                 prefixIcon: const Icon(Icons.smart_toy_outlined),
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1039,40 +1062,42 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
                       tooltip: _obscureToken ? 'Show Token' : 'Hide Token',
                       onPressed: () => setState(() => _obscureToken = !_obscureToken),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.paste_rounded),
-                      tooltip: 'Paste from clipboard',
-                      onPressed: () async {
-                        final data = await Clipboard.getData('text/plain');
-                        if (data?.text != null) {
-                          _tokenCtrl.text = data!.text!.trim();
-                        }
-                      },
-                    ),
+                    if (_isEditing)
+                      IconButton(
+                        icon: const Icon(Icons.paste_rounded),
+                        tooltip: 'Paste from clipboard',
+                        onPressed: () async {
+                          final data = await Clipboard.getData('text/plain');
+                          if (data?.text != null) {
+                            _tokenCtrl.text = data!.text!.trim();
+                          }
+                        },
+                      ),
                   ],
                 ),
               ),
-              onChanged: (_) => _saveConfig(),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _chatIdCtrl,
+              readOnly: !_isEditing,
               decoration: InputDecoration(
-                labelText: 'Channel / Group ID',
+                labelText: 'Channel / Group ID *',
                 hintText: '@hotel_receipts or -100...',
                 prefixIcon: const Icon(Icons.tag_rounded),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.paste_rounded),
-                  tooltip: 'Paste from clipboard',
-                  onPressed: () async {
-                    final data = await Clipboard.getData('text/plain');
-                    if (data?.text != null) {
-                      _chatIdCtrl.text = data!.text!.trim();
-                    }
-                  },
-                ),
+                suffixIcon: _isEditing
+                    ? IconButton(
+                        icon: const Icon(Icons.paste_rounded),
+                        tooltip: 'Paste from clipboard',
+                        onPressed: () async {
+                          final data = await Clipboard.getData('text/plain');
+                          if (data?.text != null) {
+                            _chatIdCtrl.text = data!.text!.trim();
+                          }
+                        },
+                      )
+                    : null,
               ),
-              onChanged: (_) => _saveConfig(),
             ),
             if (_testMessage != null) ...[
               const SizedBox(height: 12),
@@ -1113,24 +1138,171 @@ class _TelegramBackupCardState extends State<TelegramBackupCard> {
               ),
             ],
             const SizedBox(height: 16),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 OutlinedButton.icon(
                   onPressed: _showSetupGuide,
-                  icon: const Icon(Icons.help_outline_rounded, size: 18),
-                  label: const Text('Setup Guide'),
+                  icon: const Icon(Icons.help_outline_rounded, size: 16),
+                  label: const Text('Guide'),
                 ),
-                const Spacer(),
-                FilledButton.icon(
-                  onPressed: _isTesting ? null : _testAndSave,
-                  icon: _isTesting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.cloud_done_rounded, size: 18),
-                  label: Text(_isTesting ? 'Testing…' : 'Test & Save'),
-                ),
+                if (!_isEditing) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _isEditing = true),
+                    icon: const Icon(Icons.edit_rounded, size: 16),
+                    label: const Text('Edit'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: _isTesting ? null : _testAndSave,
+                    icon: _isTesting
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.wifi_protected_setup_rounded, size: 16),
+                    label: Text(_isTesting ? 'Testing…' : 'Test Connection'),
+                  ),
+                ] else ...[
+                  TextButton(
+                    onPressed: () {
+                      _loadSettings();
+                      setState(() => _isEditing = false);
+                    },
+                    child: const Text('Cancel'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _isTesting ? null : _testAndSave,
+                    icon: _isTesting
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.wifi_protected_setup_rounded, size: 16),
+                    label: Text(_isTesting ? 'Testing…' : 'Test'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _saveSettings,
+                    icon: const Icon(Icons.save_rounded, size: 16),
+                    label: const Text('Save'),
+                  ),
+                ],
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class SupportContactCard extends StatefulWidget {
+  const SupportContactCard({super.key});
+
+  @override
+  State<SupportContactCard> createState() => _SupportContactCardState();
+}
+
+class _SupportContactCardState extends State<SupportContactCard> {
+  PlatformConfig? _config;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final cfg = await PlatformConfigService.instance.getConfig();
+    if (mounted) setState(() => _config = cfg);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final phone = _config?.supportPhone ?? PlatformConfigService.defaultPhone;
+    final tg = _config?.supportTelegram ?? PlatformConfigService.defaultTelegram;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.support_agent_rounded, size: 20, color: cs.primary),
+              const SizedBox(width: 8),
+              const Text(
+                'Super Admin Support & Renewals',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.phone_in_talk_rounded, size: 18, color: Color(0xFF10B981)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  phone,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+              IconButton.filledTonal(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.call_rounded, size: 16),
+                tooltip: 'Call Support',
+                onPressed: () => PlatformConfigService.instance.callPhone(phone),
+              ),
+              const SizedBox(width: 4),
+              IconButton.filledTonal(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                tooltip: 'Copy Phone',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: phone));
+                  FriendlyError.showSuccess(context, 'Support phone copied: $phone');
+                },
+              ),
+            ],
+          ),
+          const Divider(height: 16),
+          Row(
+            children: [
+              const Icon(Icons.send_rounded, size: 18, color: Color(0xFF0088CC)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  tg,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+              IconButton.filledTonal(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                tooltip: 'Open Telegram',
+                onPressed: () => PlatformConfigService.instance.openTelegram(tg),
+              ),
+              const SizedBox(width: 4),
+              IconButton.filledTonal(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                tooltip: 'Copy Telegram',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: tg));
+                  FriendlyError.showSuccess(context, 'Support Telegram copied: $tg');
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Contact for plan extensions, renewals, bank setup assistance & technical help.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
         ],
       ),
     );

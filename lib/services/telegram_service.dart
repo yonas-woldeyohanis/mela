@@ -24,7 +24,9 @@ class TelegramBackupService {
 
   Future<String> getBotToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(keyBotToken) ?? '';
+    final token = prefs.getString(keyBotToken) ?? '';
+    if (token.isNotEmpty) return token;
+    return prefs.getString('platform_bot_token') ?? '';
   }
 
   Future<String> getChatId() async {
@@ -48,11 +50,15 @@ class TelegramBackupService {
     required String botToken,
     required String chatId,
   }) async {
-    final token = botToken.trim();
+    String token = botToken.trim();
+    if (token.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      token = prefs.getString('platform_bot_token') ?? '';
+    }
     final chat = chatId.trim();
 
     if (token.isEmpty) {
-      return (success: false, message: 'Please enter your Telegram Bot Token.');
+      return (success: false, message: 'Please enter your Telegram Bot Token (or configure the platform bot).');
     }
     if (chat.isEmpty) {
       return (success: false, message: 'Please enter your Telegram Channel / Group ID.');

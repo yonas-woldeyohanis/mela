@@ -277,23 +277,35 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.shield_outlined, size: 16, color: cs.onSurfaceVariant),
+                        Icon(Icons.verified_rounded, size: 15, color: cs.primary),
                         const SizedBox(width: 6),
                         Text(
-                          'Telebirr · CBE · CBE Birr · Dashen · Awash',
+                          'Universal Digital Payment & Shift Ledger',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: cs.onSurfaceVariant,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
                     Center(
                       child: Text(
-                        'Offline resilient · Instant bank verification',
+                        'Offline resilient · Instant transfer verification',
                         style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Text(
+                        '© DropEffect Solutions · All rights reserved',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.4,
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                        ),
                       ),
                     ),
                   ],

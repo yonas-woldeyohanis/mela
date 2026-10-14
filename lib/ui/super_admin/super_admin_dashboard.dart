@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
+import '../../services/platform_config_service.dart';
 import '../settings_screen.dart';
 import '../widgets.dart';
 
@@ -69,6 +70,11 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Support & Bot Config',
+            icon: const Icon(Icons.support_agent_rounded),
+            onPressed: () => _openPlatformSupportDialog(context),
+          ),
           IconButton(
             tooltip: 'Platform Settings & Security',
             icon: const Icon(Icons.settings_outlined),
@@ -1156,6 +1162,102 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                 child: loading
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Text('Register & Provision'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openPlatformSupportDialog(BuildContext context) async {
+    final cfg = await PlatformConfigService.instance.getConfig();
+    final phoneCtrl = TextEditingController(text: cfg.supportPhone);
+    final tgCtrl = TextEditingController(text: cfg.supportTelegram);
+    final botCtrl = TextEditingController(text: cfg.defaultBotToken);
+    bool saving = false;
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          final cs = Theme.of(context).colorScheme;
+          return AlertDialog(
+            title: const Row(children: [
+              Icon(Icons.support_agent_rounded, color: Color(0xFF10B981)),
+              SizedBox(width: 8),
+              Text('Support & Platform Bot'),
+            ]),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Control support contact information shown to business owners, and set the default bot for multi-business Telegram receipt storage.',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Support Phone Number *',
+                      hintText: '0996246990',
+                      prefixIcon: Icon(Icons.phone_in_talk_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: tgCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Support Telegram Username *',
+                      hintText: '@jonas_wjohn',
+                      prefixIcon: Icon(Icons.send_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: botCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Default Platform Bot Token (Optional)',
+                      hintText: 'Token from @BotFather for @Mela_platformbot',
+                      helperText: 'Allows all businesses to use one bot without collision',
+                      prefixIcon: Icon(Icons.smart_toy_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final phone = phoneCtrl.text.trim();
+                        final tg = tgCtrl.text.trim();
+                        final bot = botCtrl.text.trim();
+                        if (phone.isEmpty || tg.isEmpty) {
+                          FriendlyError.show(context, 'Please enter both phone and Telegram handle.');
+                          return;
+                        }
+                        setState(() => saving = true);
+                        await PlatformConfigService.instance.updateConfig(
+                          phone: phone,
+                          telegram: tg,
+                          botToken: bot,
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (context.mounted) {
+                          FriendlyError.showSuccess(context, 'Support and platform configuration updated!');
+                        }
+                      },
+                child: saving
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Save Settings'),
               ),
             ],
           );
