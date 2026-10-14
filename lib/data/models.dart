@@ -105,7 +105,7 @@ class CloudTx {
         id: j['id'] as String,
         waiterId: j['waiter_id'] as String,
         amount: (j['amount'] as num).toDouble(),
-        reference: j['reference_number'] as String,
+        reference: (j['reference_number'] as String?) ?? '',
         createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
         tableNumber: j['table_number'] as String?,
         provider: j['payment_provider'] as String?,
@@ -114,6 +114,37 @@ class CloudTx {
         verificationStatus: (j['verification_status'] as String?) ?? 'awaiting',
         isFlagged: j['is_flagged'] == true,
         flagResolved: j['flag_resolved'] == true,
+      );
+
+  Map<String, dynamic> toDbMap(String orgId) => {
+        'id': id,
+        'org_id': orgId,
+        'waiter_id': waiterId,
+        'table_number': tableNumber,
+        'amount': amount,
+        'reference_number': reference,
+        'payment_provider': provider,
+        'sender_name': sender,
+        'image_url': imageUrl,
+        'verification_status': verificationStatus,
+        'is_flagged': isFlagged ? 1 : 0,
+        'flag_resolved': flagResolved ? 1 : 0,
+        'created_at': createdAt.millisecondsSinceEpoch,
+      };
+
+  factory CloudTx.fromDbMap(Map<String, dynamic> m) => CloudTx(
+        id: m['id'] as String,
+        waiterId: m['waiter_id'] as String,
+        amount: (m['amount'] as num).toDouble(),
+        reference: (m['reference_number'] as String?) ?? '',
+        createdAt: DateTime.fromMillisecondsSinceEpoch(m['created_at'] as int),
+        tableNumber: m['table_number'] as String?,
+        provider: m['payment_provider'] as String?,
+        sender: m['sender_name'] as String?,
+        imageUrl: m['image_url'] as String?,
+        verificationStatus: (m['verification_status'] as String?) ?? 'awaiting',
+        isFlagged: (m['is_flagged'] as int?) == 1,
+        flagResolved: (m['flag_resolved'] as int?) == 1,
       );
 }
 

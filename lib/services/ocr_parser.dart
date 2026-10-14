@@ -69,8 +69,17 @@ class OcrParser {
     caseSensitive: false,
   );
 
-  // Alphanumeric with mix of digits and letters (e.g. DIO23G4GOE, FT23456ABCDE, etc.)
-  static final _refFallback = RegExp(r'\b(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{8,22}\b');
+  // Known Ethiopian Bank reference format patterns:
+  static final _knownBankRefPatterns = <RegExp>[
+    RegExp(r'\b(FT[0-9A-Z]{8,22})\b'), // CBE, BOA interbank
+    RegExp(r'\b(DA[0-9A-Z]{6,18})\b'), // Dashen
+    RegExp(r'\b(AW[0-9A-Z]{6,18})\b'), // Awash
+    RegExp(r'\b(CP[0-9A-Z]{6,18})\b'), // Coop
+    RegExp(r'\b(MP[0-9A-Z]{8,18})\b'), // M-Pesa
+    RegExp(r'\b(SQ[0-9A-Z]{6,18})\b'), // Sinqee
+    RegExp(r'\b(WG[0-9A-Z]{6,18})\b'), // Wegagen
+    RegExp(r'\b(HB[0-9A-Z]{6,18})\b'), // Hibret
+  ];
 
   static final _senderLabels = <RegExp>[
     RegExp(
@@ -119,13 +128,16 @@ class OcrParser {
     String? reference;
     for (final m in _refLabel.allMatches(text)) {
       final tok = m.group(1)!;
-      // Must have at least 1 digit and 1 letter or length >= 8
-      if (RegExp(r'\d').hasMatch(tok) && RegExp(r'[A-Za-z]').hasMatch(tok) && tok.length >= 6) {
-        reference = tok.toUpperCase();
-        break;
+      // Must have at least 1 digit and 1 letter or length >= 6
+      if (RegExp(r'\d').hasMatch(tok) && RegExp(r'[A-Za-z]').hasMatch(tok) && tok.length >= 6 && tok.length <= 30) {
+        final upper = tok.toUpperCase();
+        if (!upper.startsWith('202') && !upper.startsWith('DATE') && !upper.contains('HOTEL') && !upper.contains('REST')) {
+          reference = upper;
+          break;
+        }
       }
     }
-    // Fallback if not labeled
+    // Check known digital receipt URLs
     if (reference == null) {
       final urlCbe = RegExp(r'mbreciept\.cbe\.com\.et\/([A-Za-z0-9_\-]+)', caseSensitive: false).firstMatch(text);
       if (urlCbe != null) {
@@ -138,16 +150,25 @@ class OcrParser {
         reference = urlTrx.group(1)?.trim().toUpperCase();
       }
     }
+    // High-confidence bank reference patterns (FT, DA, AW, CP, MP, SQ, WG, HB)
     if (reference == null) {
-      final matches = _refFallback.allMatches(text.toUpperCase()).map((m) => m.group(0)!).toList();
-      for (final candidate in matches) {
-        // Exclude dates, phone numbers, or common words
-        if (!candidate.startsWith('202') && candidate.length >= 8 && candidate.length <= 20) {
-          reference = candidate;
+      for (final re in _knownBankRefPatterns) {
+        final m = re.firstMatch(text.toUpperCase());
+        if (m != null) {
+          reference = m.group(1);
           break;
         }
       }
     }
+    // Telebirr 10-char alphanumeric ONLY if document is confirmed Telebirr
+    if (reference == null && (provider == 'Telebirr' || text.toLowerCase().contains('telebirr'))) {
+      final m = RegExp(r'\b([A-Z0-9]{10})\b').firstMatch(text.toUpperCase());
+      if (m != null && RegExp(r'\d').hasMatch(m.group(1)!) && RegExp(r'[A-Z]').hasMatch(m.group(1)!)) {
+        reference = m.group(1);
+      }
+    }
+    // Note: If no explicit label or known bank pattern matches, reference remains null.
+    // We do NOT guess or pick random OCR words as transaction IDs.
 
     // 3. Detect Amount
     double? amount;

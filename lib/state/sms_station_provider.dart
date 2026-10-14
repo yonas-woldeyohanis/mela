@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../core/config.dart';
+import '../data/local_db.dart';
 import '../services/sms_listener_service.dart';
 import '../services/sms_parser.dart';
 import 'providers.dart';
@@ -87,17 +89,38 @@ class SmsStationNotifier extends StateNotifier<SmsStationState> {
       lastDetectedAt: credit.receivedAt,
     );
 
-    if (orgId != null && orgId.isNotEmpty && AppConfig.configured) {
-      try {
-        await sb.rpc('ingest_bank_sms', params: {
-          'p_org_id': orgId,
-          'p_reference': credit.reference,
-          'p_amount': credit.amount,
-          'p_sender': credit.senderName,
-          'p_provider': credit.provider,
-          'p_raw_sms': credit.rawSms,
-        });
-      } catch (_) {}
+    if (orgId != null && orgId.isNotEmpty) {
+      final creditId = const Uuid().v4();
+      var synced = false;
+
+      if (AppConfig.configured) {
+        try {
+          await sb.rpc('ingest_bank_sms', params: {
+            'p_org_id': orgId,
+            'p_reference': credit.reference,
+            'p_amount': credit.amount,
+            'p_sender': credit.senderName,
+            'p_provider': credit.provider,
+            'p_raw_sms': credit.rawSms,
+          });
+          synced = true;
+        } catch (_) {}
+      }
+
+      // Always save to local SQLite database so credits are kept for days and verified offline!
+      await LocalDb.instance.saveLocalBankCredit(
+        id: creditId,
+        orgId: orgId,
+        reference: credit.reference,
+        amount: credit.amount,
+        provider: credit.provider,
+        senderName: credit.senderName,
+        receiverPhone: credit.receiverPhone,
+        balance: credit.balance,
+        rawSms: credit.rawSms,
+        receivedAt: credit.receivedAt,
+        syncedToCloud: synced,
+      );
     }
   }
 

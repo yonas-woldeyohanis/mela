@@ -12,6 +12,7 @@ import '../core/utils.dart';
 import '../data/local_db.dart';
 import '../data/models.dart';
 import '../services/notification_service.dart';
+import '../services/telegram_service.dart';
 
 SupabaseClient get sb => Supabase.instance.client;
 
@@ -250,6 +251,31 @@ class SyncNotifier extends Notifier<SyncState> {
           break;
         }
       }
+
+      // 2. Sync unsynced bank credits from SMS station
+      try {
+        final unsyncedCredits = await LocalDb.instance.getUnsyncedBankCredits();
+        for (final c in unsyncedCredits) {
+          try {
+            await sb.rpc('ingest_bank_sms', params: {
+              'p_org_id': c['org_id'],
+              'p_reference': c['reference_number'],
+              'p_amount': c['amount'],
+              'p_sender': c['sender_name'],
+              'p_provider': c['provider'],
+              'p_raw_sms': c['raw_sms'],
+            });
+            await LocalDb.instance.markBankCreditSynced(c['id'] as String);
+          } catch (_) {
+            break; // network offline
+          }
+        }
+      } catch (_) {}
+
+      // 3. Process background Telegram cloud backup queue
+      try {
+        await TelegramBackupService.instance.processQueue();
+      } catch (_) {}
     } finally {
       _running = false;
       state = state.copyWith(syncing: false, lastSync: ok > 0 ? DateTime.now() : state.lastSync);
@@ -291,28 +317,62 @@ final pendingCountProvider = StreamProvider.autoDispose<int>((ref) {
 final selectedDayProvider = StateProvider<DateTime>((_) => startOfDay(DateTime.now()));
 final mgrDayProvider = StateProvider<DateTime>((_) => startOfDay(DateTime.now()));
 
-final cloudTxProvider = StreamProvider.autoDispose<List<CloudTx>>((ref) {
+final isCloudOfflineProvider = StateProvider<bool>((_) => false);
+
+final cloudTxProvider = StreamProvider.autoDispose<List<CloudTx>>((ref) async* {
   final u = ref.watch(authProvider);
-  if (u == null) return Stream.value(const <CloudTx>[]);
-  return sb
-      .from('transactions')
-      .stream(primaryKey: ['id'])
-      .eq('org_id', u.orgId)
-      .order('created_at', ascending: false)
-      .limit(600)
-      .map((rows) => rows.map(CloudTx.fromJson).toList());
+  if (u == null) {
+    yield const <CloudTx>[];
+    return;
+  }
+
+  // 1. Immediately yield cached transactions from SQLite so UI loads instantly without spinner or error
+  var cached = await LocalDb.instance.getCachedCloudTransactions(u.orgId);
+  if (cached.isNotEmpty) {
+    yield cached;
+  }
+
+  // 2. Stream from cloud with full offline and error resilience
+  try {
+    final stream = sb
+        .from('transactions')
+        .stream(primaryKey: ['id'])
+        .eq('org_id', u.orgId)
+        .order('created_at', ascending: false)
+        .limit(600)
+        .map((rows) => rows.map(CloudTx.fromJson).toList());
+
+    await for (final list in stream) {
+      ref.read(isCloudOfflineProvider.notifier).state = false;
+      cached = list;
+      yield list;
+      unawaited(LocalDb.instance.cacheCloudTransactions(u.orgId, list));
+    }
+  } catch (e) {
+    debugPrint('cloudTx stream offline (retaining cache): $e');
+    ref.read(isCloudOfflineProvider.notifier).state = true;
+    yield cached;
+  }
 });
 
 final staffProvider = FutureProvider.autoDispose<List<Staff>>((ref) async {
   final u = ref.watch(authProvider);
   if (u == null) return [];
-  final rows = await sb.from('profiles').select('id, full_name, role').eq('org_id', u.orgId).order('full_name');
-  return (rows as List).map((e) => Staff.fromJson(e as Map<String, dynamic>)).toList();
+  try {
+    final rows = await sb.from('profiles').select('id, full_name, role').eq('org_id', u.orgId).order('full_name');
+    return (rows as List).map((e) => Staff.fromJson(e as Map<String, dynamic>)).toList();
+  } catch (_) {
+    return [];
+  }
 });
 
 final auditsProvider = FutureProvider.autoDispose<List<AuditRow>>((ref) async {
   final u = ref.watch(authProvider);
   if (u == null) return [];
-  final rows = await sb.from('audits').select().eq('org_id', u.orgId).order('created_at', ascending: false).limit(20);
-  return (rows as List).map((e) => AuditRow.fromJson(e as Map<String, dynamic>)).toList();
+  try {
+    final rows = await sb.from('audits').select().eq('org_id', u.orgId).order('created_at', ascending: false).limit(20);
+    return (rows as List).map((e) => AuditRow.fromJson(e as Map<String, dynamic>)).toList();
+  } catch (_) {
+    return [];
+  }
 });

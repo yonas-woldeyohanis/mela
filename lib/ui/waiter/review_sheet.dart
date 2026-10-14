@@ -9,6 +9,7 @@ import '../../data/local_db.dart';
 import '../../data/models.dart';
 import '../../services/ocr_parser.dart';
 import '../../services/receipt_pipeline.dart';
+import '../../services/telegram_service.dart';
 import '../../state/providers.dart';
 import '../widgets.dart';
 
@@ -41,17 +42,20 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
   Future<void> _save() async {
     final settings = ref.read(settingsProvider);
     final amount = double.tryParse(_amount.text.replaceAll(',', '').trim());
-    final reference = _ref.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+    final rawRef = _ref.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
     if (amount == null || amount <= 0) return setState(() => _error = 'Enter a valid amount.');
-    if (reference.length < 4) return setState(() => _error = 'Enter the transaction reference.');
+
     final user = ref.read(authProvider)!;
+    final id = const Uuid().v4();
+    // Reference is optional! If user leaves it blank, generate a unique local placeholder
+    final reference = rawRef.isEmpty ? 'NO-REF-${id.substring(0, 8).toUpperCase()}' : rawRef;
 
     setState(() {
       _saving = true;
       _error = null;
     });
 
-    if (await LocalDb.instance.hasReferenceToday(user.orgId, reference)) {
+    if (rawRef.isNotEmpty && await LocalDb.instance.hasReferenceToday(user.orgId, reference)) {
       if (settings.haptics) HapticFeedback.heavyImpact();
       setState(() {
         _saving = false;
@@ -60,9 +64,17 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
       return;
     }
 
-    final id = const Uuid().v4();
+    // Fast-path: Check if matching bank credit was already recorded locally on this phone
+    var vStatus = 'awaiting';
+    if (rawRef.isNotEmpty) {
+      final localCredit = await LocalDb.instance.findMatchingCredit(user.orgId, reference, amount);
+      if (localCredit != null) {
+        vStatus = 'verified';
+      }
+    }
+
     final path = await ReceiptPipeline.compress(widget.imagePath, id);
-    await LocalDb.instance.insert(Receipt(
+    final receipt = Receipt(
       localId: id,
       orgId: user.orgId,
       waiterId: user.id,
@@ -73,8 +85,23 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
       tableNumber: _table.text.trim().isEmpty ? null : _table.text.trim(),
       receiptTime: widget.parsed.timeText,
       imagePath: path,
+      verificationStatus: vStatus,
       createdAt: DateTime.now(),
-    ));
+    );
+    await LocalDb.instance.insert(receipt);
+
+    // Queue for background Telegram Cloud backup (non-blocking, silent, retries on internet)
+    TelegramBackupService.instance.queueUpload(
+      localId: id,
+      orgId: user.orgId,
+      imagePath: path,
+      amount: amount,
+      reference: rawRef.isEmpty ? 'None (Cash / Manual)' : reference,
+      provider: _provider ?? 'Other',
+      sender: _sender.text.trim().isEmpty ? null : _sender.text.trim(),
+      waiterName: user.fullName,
+      orgName: user.orgName,
+    );
 
     if (settings.haptics) HapticFeedback.lightImpact();
     if (settings.sound) SystemSound.play(SystemSoundType.click);
@@ -179,7 +206,11 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
             controller: _ref,
             textCapitalization: TextCapitalization.characters,
             style: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1),
-            decoration: const InputDecoration(labelText: 'Transaction reference', prefixIcon: Icon(Icons.tag_rounded)),
+            decoration: const InputDecoration(
+              labelText: 'Transaction reference (Optional)',
+              hintText: 'Leave blank if cash or unreferenced',
+              prefixIcon: Icon(Icons.tag_rounded),
+            ),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(

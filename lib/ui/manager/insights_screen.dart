@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config.dart';
+import '../../core/friendly_error.dart';
 import '../../core/utils.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -27,7 +28,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
 
     return txAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => EmptyState(Icons.cloud_off_rounded, 'Insights unavailable', '$e'),
+      error: (e, _) => EmptyState(Icons.cloud_off_rounded, 'Insights unavailable', FriendlyError.toMessage(e)),
       data: (all) {
         final since = DateTime.now().subtract(Duration(days: _days - 1));
         final from = startOfDay(since);

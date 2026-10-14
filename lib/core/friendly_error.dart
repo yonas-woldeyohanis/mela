@@ -16,6 +16,11 @@ class FriendlyError {
     if (error is SocketException ||
         raw.contains('socketexception') ||
         raw.contains('failed host lookup') ||
+        raw.contains('no address associated with hostname') ||
+        raw.contains('realtimesubscribeexception') ||
+        raw.contains('timedout') ||
+        raw.contains('os error') ||
+        raw.contains('errno =') ||
         raw.contains('network is unreachable') ||
         raw.contains('connection refused') ||
         raw.contains('clientexception') ||

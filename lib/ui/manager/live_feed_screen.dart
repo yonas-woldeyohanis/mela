@@ -25,9 +25,38 @@ class _LiveFeedScreenState extends ConsumerState<LiveFeedScreen> {
     final staff = ref.watch(staffProvider).valueOrNull ?? const <Staff>[];
     final names = {for (final s in staff) s.id: s.fullName};
 
+    final isOffline = ref.watch(isCloudOfflineProvider);
+
     return tx.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => EmptyState(Icons.cloud_off_rounded, 'Live feed unavailable', '$e'),
+      error: (e, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_rounded, size: 56, color: Color(0xFFF59E0B)),
+              const SizedBox(height: 16),
+              const Text(
+                'You are currently offline',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Transactions will update automatically once reconnected to Wi-Fi or mobile data.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry Connection'),
+                onPressed: () => ref.invalidate(cloudTxProvider),
+              ),
+            ],
+          ),
+        ),
+      ),
       data: (all) {
         final dayRows = all.where((t) => sameDay(t.createdAt, day)).toList();
         final rows = dayRows
@@ -40,6 +69,38 @@ class _LiveFeedScreenState extends ConsumerState<LiveFeedScreen> {
 
         return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
           DayNavigator(day: day, onChanged: (d) => ref.read(mgrDayProvider.notifier).state = d),
+          if (isOffline)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.wifi_off_rounded, size: 16, color: Color(0xFFF59E0B)),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Offline mode · Showing cached transactions',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFF59E0B)),
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => ref.invalidate(cloudTxProvider),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Row(children: [
+                      Icon(Icons.refresh_rounded, size: 14, color: Color(0xFFF59E0B)),
+                      SizedBox(width: 4),
+                      Text('Retry', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFF59E0B))),
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
           TotalHero(
             label: 'Digital revenue',
             total: total,
@@ -96,8 +157,17 @@ class _LiveFeedScreenState extends ConsumerState<LiveFeedScreen> {
                       Text(fmtCurrency(t.amount), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
                       Text('${names[t.waiterId] ?? 'Staff'}${t.tableNumber != null ? ' · Table ${t.tableNumber}' : ''}',
                           style: TextStyle(color: cs.onSurfaceVariant)),
-                      Text(t.reference,
-                          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12, letterSpacing: 0.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        t.reference.startsWith('NO-REF') ? 'None (Cash / Manual)' : t.reference,
+                        style: TextStyle(
+                          color: t.reference.startsWith('NO-REF') ? cs.onSurfaceVariant.withValues(alpha: 0.7) : cs.onSurfaceVariant,
+                          fontStyle: t.reference.startsWith('NO-REF') ? FontStyle.italic : FontStyle.normal,
+                          fontSize: 12,
+                          letterSpacing: 0.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ]),
                   ),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [

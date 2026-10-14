@@ -17,7 +17,7 @@ class LocalDb {
     if (_db != null) return _db!;
     _db = await openDatabase(
       p.join(await getDatabasesPath(), 'swiftreceipt.db'),
-      version: 2,
+      version: 3,
       onCreate: (db, v) async {
         await db.execute('''
           CREATE TABLE receipts(
@@ -39,11 +39,110 @@ class LocalDb {
           )''');
         await db.execute('CREATE INDEX idx_ref ON receipts(org_id, reference_number)');
         await db.execute('CREATE INDEX idx_day ON receipts(waiter_id, created_at)');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS local_bank_credits(
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            reference_number TEXT NOT NULL,
+            amount REAL NOT NULL,
+            provider TEXT,
+            sender_name TEXT,
+            receiver_phone TEXT,
+            balance REAL,
+            raw_sms TEXT NOT NULL,
+            received_at INTEGER NOT NULL,
+            synced_to_cloud INTEGER NOT NULL DEFAULT 0,
+            matched_local_id TEXT
+          )''');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_lbc_ref ON local_bank_credits(org_id, reference_number)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_lbc_time ON local_bank_credits(received_at)');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS cached_cloud_tx(
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            waiter_id TEXT NOT NULL,
+            table_number TEXT,
+            amount REAL NOT NULL,
+            reference_number TEXT NOT NULL,
+            payment_provider TEXT,
+            sender_name TEXT,
+            image_url TEXT,
+            sync_status TEXT,
+            verification_status TEXT,
+            is_flagged INTEGER NOT NULL DEFAULT 0,
+            flag_resolved INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+          )''');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_cctx_org_time ON cached_cloud_tx(org_id, created_at DESC)');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS telegram_queue(
+            local_id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            image_path TEXT NOT NULL,
+            caption TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            retries INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+          )''');
       },
       onUpgrade: (db, oldV, newV) async {
         if (oldV < 2) {
           try {
             await db.execute("ALTER TABLE receipts ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'awaiting'");
+          } catch (_) {}
+        }
+        if (oldV < 3) {
+          try {
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS local_bank_credits(
+                id TEXT PRIMARY KEY,
+                org_id TEXT NOT NULL,
+                reference_number TEXT NOT NULL,
+                amount REAL NOT NULL,
+                provider TEXT,
+                sender_name TEXT,
+                receiver_phone TEXT,
+                balance REAL,
+                raw_sms TEXT NOT NULL,
+                received_at INTEGER NOT NULL,
+                synced_to_cloud INTEGER NOT NULL DEFAULT 0,
+                matched_local_id TEXT
+              )''');
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_lbc_ref ON local_bank_credits(org_id, reference_number)');
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_lbc_time ON local_bank_credits(received_at)');
+
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS cached_cloud_tx(
+                id TEXT PRIMARY KEY,
+                org_id TEXT NOT NULL,
+                waiter_id TEXT NOT NULL,
+                table_number TEXT,
+                amount REAL NOT NULL,
+                reference_number TEXT NOT NULL,
+                payment_provider TEXT,
+                sender_name TEXT,
+                image_url TEXT,
+                sync_status TEXT,
+                verification_status TEXT,
+                is_flagged INTEGER NOT NULL DEFAULT 0,
+                flag_resolved INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+              )''');
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_cctx_org_time ON cached_cloud_tx(org_id, created_at DESC)');
+
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS telegram_queue(
+                local_id TEXT PRIMARY KEY,
+                org_id TEXT NOT NULL,
+                image_path TEXT NOT NULL,
+                caption TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retries INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+              )''');
           } catch (_) {}
         }
       },
@@ -171,5 +270,154 @@ class LocalDb {
     }
     if (rows.isNotEmpty) _notify();
     return rows.length;
+  }
+
+  // ───────────────────────── Local Bank Credits Store ─────────────────────────
+
+  /// Saves incoming bank SMS credit locally on device (persisted for 3+ days).
+  Future<void> saveLocalBankCredit({
+    required String id,
+    required String orgId,
+    required String reference,
+    required double amount,
+    String? provider,
+    String? senderName,
+    String? receiverPhone,
+    double? balance,
+    required String rawSms,
+    required DateTime receivedAt,
+    bool syncedToCloud = false,
+  }) async {
+    final db = await _database;
+    await db.insert(
+      'local_bank_credits',
+      {
+        'id': id,
+        'org_id': orgId,
+        'reference_number': reference.trim().toUpperCase(),
+        'amount': amount,
+        'provider': provider,
+        'sender_name': senderName,
+        'receiver_phone': receiverPhone,
+        'balance': balance,
+        'raw_sms': rawSms,
+        'received_at': receivedAt.millisecondsSinceEpoch,
+        'synced_to_cloud': syncedToCloud ? 1 : 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Finds if a matching bank credit exists locally from the last 3 days.
+  Future<Map<String, dynamic>?> findMatchingCredit(String orgId, String reference, double amount) async {
+    if (reference.isEmpty || reference.startsWith('NO-REF')) return null;
+    final db = await _database;
+    final cleanRef = reference.trim().toUpperCase();
+    final threeDaysAgo = DateTime.now().subtract(const Duration(days: 3)).millisecondsSinceEpoch;
+    final rows = await db.query(
+      'local_bank_credits',
+      where: 'org_id = ? AND reference_number = ? AND received_at >= ?',
+      whereArgs: [orgId, cleanRef, threeDaysAgo],
+      orderBy: 'received_at DESC',
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final r = rows.first;
+      final creditAmount = (r['amount'] as num).toDouble();
+      final diff = (creditAmount - amount).abs();
+      if (diff < 0.05) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  /// Get all unsynced local bank credits to upload to Supabase
+  Future<List<Map<String, dynamic>>> getUnsyncedBankCredits() async {
+    final db = await _database;
+    return await db.query(
+      'local_bank_credits',
+      where: 'synced_to_cloud = 0',
+      orderBy: 'received_at ASC',
+    );
+  }
+
+  Future<void> markBankCreditSynced(String id) async {
+    final db = await _database;
+    await db.update('local_bank_credits', {'synced_to_cloud': 1}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ───────────────────────── Cloud Transactions Cache ─────────────────────────
+
+  Future<void> cacheCloudTransactions(String orgId, List<CloudTx> list) async {
+    final db = await _database;
+    final batch = db.batch();
+    for (final tx in list) {
+      batch.insert(
+        'cached_cloud_tx',
+        tx.toDbMap(orgId),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<CloudTx>> getCachedCloudTransactions(String orgId) async {
+    final db = await _database;
+    final rows = await db.query(
+      'cached_cloud_tx',
+      where: 'org_id = ?',
+      whereArgs: [orgId],
+      orderBy: 'created_at DESC',
+      limit: 600,
+    );
+    return rows.map(CloudTx.fromDbMap).toList();
+  }
+
+  // ───────────────────────── Telegram Backup Queue ─────────────────────────
+
+  Future<void> queueTelegramUpload({
+    required String localId,
+    required String orgId,
+    required String imagePath,
+    required String caption,
+  }) async {
+    final db = await _database;
+    await db.insert(
+      'telegram_queue',
+      {
+        'local_id': localId,
+        'org_id': orgId,
+        'image_path': imagePath,
+        'caption': caption,
+        'status': 'pending',
+        'retries': 0,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingTelegramUploads() async {
+    final db = await _database;
+    return await db.query(
+      'telegram_queue',
+      where: "status = 'pending' AND retries < 5",
+      orderBy: 'created_at ASC',
+      limit: 5,
+    );
+  }
+
+  Future<void> markTelegramUploaded(String localId) async {
+    final db = await _database;
+    await db.delete('telegram_queue', where: 'local_id = ?', whereArgs: [localId]);
+  }
+
+  Future<void> incrementTelegramRetry(String localId) async {
+    final db = await _database;
+    await db.rawUpdate(
+      'UPDATE telegram_queue SET retries = retries + 1 WHERE local_id = ?',
+      [localId],
+    );
   }
 }

@@ -10,6 +10,7 @@ import '../state/providers.dart';
 import '../state/security_provider.dart';
 import '../state/sms_station_provider.dart';
 import '../data/models.dart';
+import '../services/telegram_service.dart';
 import 'widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -235,6 +236,8 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ]),
         ),
+        _section(context, 'Telegram Cloud Storage'),
+        const TelegramBackupCard(),
       ],
       _section(context, 'Appearance'),
       Panel(
@@ -676,3 +679,328 @@ Color _remainingDaysColor(DateTime? expiresAt) {
   if (diff <= 7) return const Color(0xFFF59E0B);
   return StatusColors.synced;
 }
+
+class TelegramBackupCard extends StatefulWidget {
+  const TelegramBackupCard({super.key});
+
+  @override
+  State<TelegramBackupCard> createState() => _TelegramBackupCardState();
+}
+
+class _TelegramBackupCardState extends State<TelegramBackupCard> {
+  bool _enabled = false;
+  bool _obscureToken = true;
+  bool _isLoading = true;
+  bool _isTesting = false;
+  String? _testMessage;
+  bool? _testSuccess;
+
+  final _tokenCtrl = TextEditingController();
+  final _chatIdCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final tg = TelegramBackupService.instance;
+    final enabled = await tg.isEnabled();
+    final token = await tg.getBotToken();
+    final chat = await tg.getChatId();
+    if (mounted) {
+      setState(() {
+        _enabled = enabled;
+        _tokenCtrl.text = token;
+        _chatIdCtrl.text = chat;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _tokenCtrl.dispose();
+    _chatIdCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveConfig({bool? forceEnabled}) async {
+    final enabled = forceEnabled ?? _enabled;
+    await TelegramBackupService.instance.setConfig(
+      enabled: enabled,
+      botToken: _tokenCtrl.text,
+      chatId: _chatIdCtrl.text,
+    );
+  }
+
+  Future<void> _testAndSave() async {
+    final token = _tokenCtrl.text.trim();
+    final chat = _chatIdCtrl.text.trim();
+
+    if (token.isEmpty) {
+      setState(() {
+        _testSuccess = false;
+        _testMessage = 'Please enter your Telegram Bot Token.';
+      });
+      return;
+    }
+    if (chat.isEmpty) {
+      setState(() {
+        _testSuccess = false;
+        _testMessage = 'Please enter your Telegram Channel / Group ID.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isTesting = true;
+      _testMessage = null;
+      _testSuccess = null;
+    });
+
+    final res = await TelegramBackupService.instance.testConnection(
+      botToken: token,
+      chatId: chat,
+    );
+
+    if (!mounted) return;
+
+    if (res.success) {
+      setState(() {
+        _enabled = true;
+        _isTesting = false;
+        _testSuccess = true;
+        _testMessage = res.message;
+      });
+      await _saveConfig(forceEnabled: true);
+      if (mounted) {
+        FriendlyError.showSuccess(context, 'Telegram storage connected! Receipts will back up automatically.');
+      }
+    } else {
+      setState(() {
+        _isTesting = false;
+        _testSuccess = false;
+        _testMessage = res.message;
+      });
+    }
+  }
+
+  void _showSetupGuide() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.help_outline_rounded, color: Color(0xFF0088CC)),
+          SizedBox(width: 8),
+          Text('Telegram Setup Guide'),
+        ]),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Store all receipt images completely free with unlimited cloud storage on Telegram:\n',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text('1. Open Telegram and search for @BotFather.'),
+              SizedBox(height: 6),
+              Text('2. Send /newbot, give your bot a name, and copy the HTTP API Token.'),
+              SizedBox(height: 6),
+              Text('3. Create a private Channel or Group for your business receipts.'),
+              SizedBox(height: 6),
+              Text('4. Add your bot to the Channel as an Administrator with "Post Messages" permission.'),
+              SizedBox(height: 6),
+              Text('5. Copy the Channel link (e.g. @my_hotel_receipts) or Chat ID, paste both fields here, and tap "Test & Save".'),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (_isLoading) {
+      return const Panel(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0088CC).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.send_rounded, color: Color(0xFF0088CC), size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Telegram Photo Storage', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(
+                      _enabled
+                          ? 'Active · Uploads receipt photos to Telegram'
+                          : 'Disabled · Free cloud image storage',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _enabled ? StatusColors.synced : cs.onSurfaceVariant,
+                        fontWeight: _enabled ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _enabled,
+                onChanged: (val) async {
+                  setState(() => _enabled = val);
+                  await _saveConfig();
+                },
+              ),
+            ],
+          ),
+          if (_enabled) ...[
+            const Divider(height: 24),
+            Text(
+              'Every scanned receipt photo is automatically sent to your Telegram channel or group in the background when connected to the internet.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _tokenCtrl,
+              obscureText: _obscureToken,
+              decoration: InputDecoration(
+                labelText: 'Telegram Bot Token',
+                hintText: '123456789:ABCdefGhI...',
+                prefixIcon: const Icon(Icons.smart_toy_outlined),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(_obscureToken ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      tooltip: _obscureToken ? 'Show Token' : 'Hide Token',
+                      onPressed: () => setState(() => _obscureToken = !_obscureToken),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.paste_rounded),
+                      tooltip: 'Paste from clipboard',
+                      onPressed: () async {
+                        final data = await Clipboard.getData('text/plain');
+                        if (data?.text != null) {
+                          _tokenCtrl.text = data!.text!.trim();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              onChanged: (_) => _saveConfig(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _chatIdCtrl,
+              decoration: InputDecoration(
+                labelText: 'Channel / Group ID',
+                hintText: '@hotel_receipts or -100...',
+                prefixIcon: const Icon(Icons.tag_rounded),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.paste_rounded),
+                  tooltip: 'Paste from clipboard',
+                  onPressed: () async {
+                    final data = await Clipboard.getData('text/plain');
+                    if (data?.text != null) {
+                      _chatIdCtrl.text = data!.text!.trim();
+                    }
+                  },
+                ),
+              ),
+              onChanged: (_) => _saveConfig(),
+            ),
+            if (_testMessage != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _testSuccess == true
+                      ? StatusColors.synced.withValues(alpha: 0.12)
+                      : cs.errorContainer.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _testSuccess == true
+                        ? StatusColors.synced.withValues(alpha: 0.4)
+                        : cs.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _testSuccess == true ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                      size: 20,
+                      color: _testSuccess == true ? StatusColors.synced : cs.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _testMessage!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _testSuccess == true ? StatusColors.synced : cs.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _showSetupGuide,
+                  icon: const Icon(Icons.help_outline_rounded, size: 18),
+                  label: const Text('Setup Guide'),
+                ),
+                const Spacer(),
+                FilledButton.icon(
+                  onPressed: _isTesting ? null : _testAndSave,
+                  icon: _isTesting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.cloud_done_rounded, size: 18),
+                  label: Text(_isTesting ? 'Testing…' : 'Test & Save'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
