@@ -61,8 +61,8 @@ begin
   limit 1;
 
   if v_credit_id is not null then
-    -- Check if amount matches within 0.05 tolerance
-    if abs(v_credit_amount - new.amount) < 0.05 then
+    -- Check if amount matches within 0.05 tolerance OR within known transfer fee tier (up to 20 ETB)
+    if abs(v_credit_amount - new.amount) < 0.05 or (new.amount > v_credit_amount and (new.amount - v_credit_amount) <= 20.0) then
       new.verification_status := 'verified';
     else
       new.verification_status := 'mismatch';
@@ -112,7 +112,8 @@ begin
   limit 1;
 
   if v_tx_id is not null then
-    if abs(v_tx_amount - new.amount) < 0.05 then
+    -- Check if amount matches within 0.05 tolerance OR within known transfer fee tier (up to 20 ETB)
+    if abs(v_tx_amount - new.amount) < 0.05 or (v_tx_amount > new.amount and (v_tx_amount - new.amount) <= 20.0) then
       update transactions
       set verification_status = 'verified'
       where id = v_tx_id;

@@ -240,8 +240,49 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
             controller: _amount,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-            decoration: const InputDecoration(labelText: 'Amount', prefixText: '${AppConfig.currency}  '),
+            decoration: const InputDecoration(labelText: 'Amount (Net Received)', prefixText: '${AppConfig.currency}  '),
           ),
+          if (widget.parsed.fee != null && widget.parsed.fee! > 0 && widget.parsed.totalPaid != null) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.payments_outlined, size: 18, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Customer paid ${widget.parsed.totalPaid!.toStringAsFixed(2)} ETB (${widget.parsed.fee!.toStringAsFixed(2)} ETB fee deducted). Net received: ${widget.parsed.amount!.toStringAsFixed(2)} ETB',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        final netStr = widget.parsed.amount!.toStringAsFixed(2);
+                        final grossStr = widget.parsed.totalPaid!.toStringAsFixed(2);
+                        _amount.text = (_amount.text == netStr) ? grossStr : netStr;
+                      });
+                    },
+                    child: Text(
+                      _amount.text == widget.parsed.amount!.toStringAsFixed(2) ? 'Use Gross' : 'Use Net',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           TextField(
             controller: _ref,

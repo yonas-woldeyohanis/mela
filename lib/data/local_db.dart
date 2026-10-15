@@ -325,7 +325,14 @@ class LocalDb {
       final r = rows.first;
       final creditAmount = (r['amount'] as num).toDouble();
       final diff = (creditAmount - amount).abs();
+      // 1. Exact amount match (within 5 cents)
       if (diff < 0.05) {
+        return r;
+      }
+      // 2. Smart fee tolerance:
+      // If the reference matches, and the scanned amount is higher by a known transfer fee tier (0.50 to 20.00 ETB)
+      // e.g. receipt recorded gross 51.00 ETB while bank SMS recorded net 50.00 ETB
+      if (amount > creditAmount && (amount - creditAmount) <= 20.0) {
         return r;
       }
     }
