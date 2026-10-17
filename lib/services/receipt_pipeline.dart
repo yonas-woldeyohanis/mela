@@ -52,8 +52,8 @@ class ReceiptPipeline {
         if (val.startsWith('http://') || val.startsWith('https://')) {
           qrUrl = val;
           break;
-        } else if (qrRawData == null) {
-          qrRawData = val;
+        } else {
+          qrRawData ??= val;
         }
       }
     }

@@ -47,39 +47,47 @@ class OcrParser {
     'Abay': RegExp(r'abay\s+bank|አባይ', caseSensitive: false),
   };
 
-  // 1. Explicit NET / TRANSFERRED amount patterns (Primary - money received by recipient)
-  static final _netTransferredLabels = <RegExp>[
+  // 1. Direct transfer statements & explicit payment labels
+  static final _primaryTransferStatements = <RegExp>[
+    // "ETB 200.00 has been debited", "200.00 ETB has been credited", "has been transferred"
+    RegExp(
+      _cur + _n + r'\s+has\s+been\s+(?:debited|credited|transferred|sent|paid)',
+      caseSensitive: false,
+    ),
+    // "credited with ETB 1,500.00", "debited with ETB 500.00"
+    RegExp(
+      r'(?:credited|debited)\s+with\s+' + _cur + _n,
+      caseSensitive: false,
+    ),
+    // "received ETB 350.00", "transferred ETB 350.00", "paid ETB 350.00", "sent ETB 350.00"
+    RegExp(
+      r'(?:received|transferred|paid|sent)\s+' + _cur + _n,
+      caseSensitive: false,
+    ),
     // "Transferred Amount : 50.00 ETB", "Transfer Amount: 50.00", "Settled Amount: 50.00", "Credited Amount: 50.00"
     RegExp(
-      r'(?:transferred\s*amount|transfer\s*amount|settled\s*amount|credited\s*amount|sent\s*amount|received\s*amount|net\s*amount|payment\s*amount|የተላለፈው\s*ገንዘብ|የተላለፈ\s*ሒሳብ|የተከፈለ\s*ገንዘብ|የተላከው)\s*[:\-]?\s*' +
+      r'(?:transferred\s*amount|transfer\s*amount|settled\s*amount|credited\s*amount|sent\s*amount|received\s*amount|payment\s*amount|net\s*amount|የተላለፈው\s*ገንዘብ|የተላለፈ\s*ሒሳብ|የተከፈለ\s*ገንዘብ|የተላከው)\s*[:\-]?\s*' +
+          _cur +
+          _n,
+      caseSensitive: false,
+    ),
+    // "Amount: 200.00 ETB", "Payment: 200.00", "ሒሳብ"
+    RegExp(
+      r'(?:amount|payment|total\s*(?:amount|payment|paid)?|ጠቅላላ\s*ክፍያ|ሒሳብ|የተከፈለ)\s*[:\-]?\s*' +
           _cur +
           _n,
       caseSensitive: false,
     ),
   ];
 
-  // 2. Explicit SERVICE FEE patterns (Platform / network charges)
-  static final _serviceFeeLabels = <RegExp>[
-    // "Service Fee : 1.00 ETB", "Service Fee (VAT incl.): 1.15", "Transaction Fee: 1.00", "Service Charge: 1.00"
+  // Specific fee / charge patterns whose amounts must NEVER be taken as the main payment:
+  static final _feePatterns = <RegExp>[
     RegExp(
-      r'(?:service\s*fee(?:\s*vat)?|transaction\s*fee|transfer\s*fee|service\s*charge|service\s*fee\s*amount|fee(?:\s*amount)?|charge|commission|የአገልግሎት\s*ክፍያ|የአገልግሎት\s*ክፍያ\s*ቫት|ኮሚሽን)\s*[:\-]?\s*' +
+      r'(?:service\s*(?:charge|fee)|transaction\s*fee|transfer\s*fee|vat(?:\s*\(\d+%\))?|disaster\s*recovery(?:\s*\(\d+%\))?|commission|charge|fee|የአገልግሎት\s*ክፍያ|ቫት|ኮሚሽን)\s*(?:of)?\s*[:\-]?\s*' +
           _cur +
           _n,
       caseSensitive: false,
     ),
-  ];
-
-  // 3. Explicit GROSS / TOTAL PAID amount patterns (Payer's wallet deduction = Net + Fee)
-  static final _totalPaidLabels = <RegExp>[
-    // "Total Paid Amount : 51.00 ETB", "Total Paid : 51.00", "Total Payment: 51.00", "Total Debited: 51.00"
-    RegExp(
-      r'(?:total\s*(?:paid\s*)?amount|total\s*payment|total\s*paid|total\s*debited|debited\s*amount|total\s*transferred|total\s*deducted|total\s*charge|ጠቅላላ\s*ክፍያ|ጠቅላላ\s*የተከፈለ)\s*[:\-]?\s*' +
-          _cur +
-          _n,
-      caseSensitive: false,
-    ),
-    // Fallback general total / payment / amount
-    RegExp(r'(?:total|payment|amount|ሒሳብ|የተከፈለ)\s*[:\-]?\s*' + _cur + _n, caseSensitive: false),
   ];
 
   // Standalone currency pattern: ETB 100.00, 100.00 ETB, etc.
@@ -223,144 +231,81 @@ class OcrParser {
     // Note: If no explicit label or known bank pattern matches, reference remains null.
     // We do NOT guess or pick random OCR words as transaction IDs.
 
-    // 3. Detect Amount (Distinguishing Net Transferred vs. Customer Platform Fee vs. Total Paid)
-    double? netAmount;
-    for (final re in _netTransferredLabels) {
-      final m = re.firstMatch(text);
-      if (m != null) {
-        netAmount = _num(m.group(1));
-        if (netAmount != null) break;
+    // 3. Detect Amount (Direct transfer extraction without auto-fee subtraction)
+    // Collect all explicit fee, VAT, service charge, and tax numbers to exclude them
+    final excludedFees = <double>{};
+    for (final re in _feePatterns) {
+      for (final m in re.allMatches(text)) {
+        final f = _num(m.group(1));
+        if (f != null) excludedFees.add(f);
       }
     }
 
-    double? fee;
-    for (final re in _serviceFeeLabels) {
+    double? amount;
+
+    // Pass 1: Direct transfer / credited / debited / received statements
+    for (final re in _primaryTransferStatements) {
       final m = re.firstMatch(text);
       if (m != null) {
-        fee = _num(m.group(1));
-        if (fee != null && fee < 1000) break;
+        final v = _num(m.group(1));
+        if (v != null && !excludedFees.contains(v)) {
+          amount = v;
+          break;
+        }
       }
     }
 
-    double? totalPaid;
-    for (final re in _totalPaidLabels) {
-      final m = re.firstMatch(text);
-      if (m != null) {
-        totalPaid = _num(m.group(1));
-        if (totalPaid != null) break;
-      }
-    }
-
-    // Multi-line label scanning (e.g. line 1: "Transferred Amount", line 2: "50.00 ETB")
-    if (netAmount == null) {
+    // Pass 2: Multi-line label scanning (e.g. line 1: "Transferred Amount", line 2: "200.00 ETB")
+    if (amount == null) {
       for (var i = 0; i < lines.length - 1; i++) {
         final cur = lines[i].toLowerCase();
         if (cur.contains('transferred amount') ||
             cur.contains('transfer amount') ||
             cur.contains('settled amount') ||
             cur.contains('received amount') ||
-            cur.contains('የተላለፈው ገንዘብ')) {
+            cur.contains('credited amount') ||
+            cur.contains('sent amount') ||
+            cur.contains('payment amount') ||
+            cur.contains('amount') ||
+            cur.contains('total') ||
+            cur.contains('የተላለፈው') ||
+            cur.contains('ክፍያ')) {
           final next = lines[i + 1];
           final nm = RegExp(r'([0-9][0-9,]*(?:\.[0-9]{1,2})?)').firstMatch(next);
           if (nm != null) {
-            netAmount = _num(nm.group(1));
-            if (netAmount != null) break;
+            final v = _num(nm.group(1));
+            if (v != null && !excludedFees.contains(v) && v < 10000000) {
+              amount = v;
+              break;
+            }
           }
         }
       }
     }
 
-    if (fee == null) {
-      for (var i = 0; i < lines.length - 1; i++) {
-        final cur = lines[i].toLowerCase();
-        if (cur.contains('service fee') ||
-            cur.contains('service charge') ||
-            cur.contains('transfer fee') ||
-            cur == 'fee' ||
-            cur.contains('የአገልግሎት ክፍያ')) {
-          final next = lines[i + 1];
-          final nm = RegExp(r'([0-9][0-9,]*(?:\.[0-9]{1,2})?)').firstMatch(next);
-          if (nm != null) {
-            fee = _num(nm.group(1));
-            if (fee != null && fee < 1000) break;
-          }
-        }
-      }
-    }
-
-    if (totalPaid == null) {
-      for (var i = 0; i < lines.length - 1; i++) {
-        final cur = lines[i].toLowerCase();
-        if (cur.contains('total paid') || cur.contains('total amount') || cur == 'total' || cur.contains('ጠቅላላ ክፍያ')) {
-          final next = lines[i + 1];
-          final nm = RegExp(r'([0-9][0-9,]*(?:\.[0-9]{1,2})?)').firstMatch(next);
-          if (nm != null) {
-            totalPaid = _num(nm.group(1));
-            if (totalPaid != null) break;
-          }
-        }
-      }
-    }
-
-    // Determine primary merchant amount
-    double? amount;
-    if (netAmount != null) {
-      // Direct net transferred amount received by merchant
-      amount = netAmount;
-      if (totalPaid == null && fee != null) {
-        totalPaid = double.parse((netAmount + fee).toStringAsFixed(2));
-      }
-    } else if (totalPaid != null && fee != null && totalPaid > fee) {
-      // Deduce net: Total Paid - Service Fee = Net received!
-      amount = double.parse((totalPaid - fee).toStringAsFixed(2));
-      netAmount = amount;
-    } else if (totalPaid != null) {
-      amount = totalPaid;
-    }
-
-    // Pass B: Standalone currency with ETB / Birr before or after
+    // Pass 3: Standalone currency with ETB / Birr before or after
     if (amount == null) {
       final candidates = <double>[];
       for (final m in _amountCurrencyBefore.allMatches(text)) {
         final v = _num(m.group(1));
-        if (v != null) candidates.add(v);
+        if (v != null && !excludedFees.contains(v) && v < 10000000) candidates.add(v);
       }
       for (final m in _amountCurrencyAfter.allMatches(text)) {
         final v = _num(m.group(1));
-        if (v != null) candidates.add(v);
+        if (v != null && !excludedFees.contains(v) && v < 10000000) candidates.add(v);
       }
       if (candidates.isNotEmpty) {
-        final plausible = candidates.where((c) => c < 10000000).toList();
-        if (plausible.isNotEmpty) {
-          // If 3 numbers match Total, Net, and Fee (e.g. 51, 50, 1)
-          if (plausible.length >= 3) {
-            final sorted = [...plausible]..sort((a, b) => b.compareTo(a));
-            for (var i = 0; i < sorted.length - 1; i++) {
-              for (var j = i + 1; j < sorted.length; j++) {
-                final diff = double.parse((sorted[i] - sorted[j]).toStringAsFixed(2));
-                if (diff > 0 && diff <= 25.0 && sorted.contains(diff)) {
-                  totalPaid ??= sorted[i];
-                  netAmount ??= sorted[j];
-                  fee ??= diff;
-                  amount = sorted[j];
-                  break;
-                }
-              }
-              if (amount != null) break;
-            }
-          }
-          amount ??= plausible.first;
-        }
+        amount = candidates.first;
       }
     }
 
-    // Pass C: Line scanning for standalone signed numbers (e.g. "-100.00" or "+100.00")
+    // Pass 4: Line scanning for standalone signed numbers (e.g. "-100.00" or "+100.00")
     if (amount == null) {
       for (final line in lines) {
         final sm = _standaloneAmountWithSign.firstMatch(line);
         if (sm != null) {
           final v = _num(sm.group(1));
-          if (v != null && v < 10000000) {
+          if (v != null && !excludedFees.contains(v) && v < 10000000) {
             amount = v;
             break;
           }
@@ -368,34 +313,16 @@ class OcrParser {
       }
     }
 
-    // Pass D: Scan line containing decimals (e.g. "100.00" alone on a line or header)
+    // Pass 5: Scan line containing decimals (e.g. "100.00" alone on a line)
     if (amount == null) {
       for (final line in lines) {
         final cleanLine = line.replaceAll(RegExp(r'[^0-9.,]'), '');
         final dm = _standaloneAmountDecimal.firstMatch(cleanLine);
         if (dm != null) {
           final v = _num(dm.group(1));
-          if (v != null && v > 0.5 && v < 5000000 && !line.contains(RegExp(r'202\d|199\d'))) {
+          if (v != null && !excludedFees.contains(v) && v > 0.5 && v < 5000000 && !line.contains(RegExp(r'202\d|199\d'))) {
             amount = v;
             break;
-          }
-        }
-      }
-    }
-
-    // Pass E: Check line immediately following "Amount", "Total", or "Payment"
-    if (amount == null) {
-      for (var i = 0; i < lines.length - 1; i++) {
-        final cur = lines[i].toLowerCase();
-        if (cur.contains('amount') || cur.contains('total') || cur.contains('paid') || cur.contains('birr')) {
-          final next = lines[i + 1];
-          final nm = RegExp(r'([0-9][0-9,]*(?:\.[0-9]{1,2})?)').firstMatch(next);
-          if (nm != null) {
-            final v = _num(nm.group(1));
-            if (v != null && v < 10000000) {
-              amount = v;
-              break;
-            }
           }
         }
       }
@@ -447,9 +374,9 @@ class OcrParser {
 
     return ParsedReceipt(
       amount: amount,
-      netAmount: netAmount ?? amount,
-      fee: fee,
-      totalPaid: totalPaid,
+      netAmount: amount,
+      fee: null,
+      totalPaid: amount,
       reference: reference,
       provider: provider,
       sender: sender?.isEmpty == true ? null : sender,

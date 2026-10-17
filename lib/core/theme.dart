@@ -91,7 +91,7 @@ ThemeData buildTheme(Brightness b, Color seed) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(54),
+        minimumSize: const Size(64, 54),
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, letterSpacing: 0.1),
@@ -99,7 +99,7 @@ ThemeData buildTheme(Brightness b, Color seed) {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(52),
+        minimumSize: const Size(64, 52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         side: BorderSide(
           color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
