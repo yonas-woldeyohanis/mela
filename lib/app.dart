@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/config.dart';
 import 'core/theme.dart';
 import 'core/utils.dart';
+import 'services/notification_service.dart';
 import 'state/providers.dart';
 import 'state/security_provider.dart';
 import 'state/sms_station_provider.dart';
@@ -64,8 +65,13 @@ class Gate extends ConsumerWidget {
       return const SuspendedAccessScreen(key: ValueKey('suspended'));
     }
 
-    // 3. Ensure SMS Station is actively listening by default
-    ref.watch(smsStationProvider);
+    // 3. Request notifications permission gracefully once user is authenticated
+    NotificationService.instance.requestPermission();
+
+    // 4. Ensure SMS Station is actively listening only for Owner devices (with the business SIM)
+    if (user.role == 'owner') {
+      ref.watch(smsStationProvider);
+    }
 
     // 4. Regular Owner/Manager or Waiter
     return AnimatedSwitcher(

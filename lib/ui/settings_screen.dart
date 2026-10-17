@@ -211,8 +211,9 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
-        _section(context, 'SMS Verification Station'),
-        Panel(
+        if (user.role == 'owner') ...[
+          _section(context, 'SMS Verification Station'),
+          Panel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Icon(
@@ -289,7 +290,8 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ]),
         ),
-        _section(context, 'Telegram Cloud Storage'),
+      ],
+      _section(context, 'Telegram Cloud Storage'),
         const TelegramBackupCard(),
       ],
       _section(context, 'Appearance'),

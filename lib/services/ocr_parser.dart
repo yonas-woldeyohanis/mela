@@ -29,14 +29,19 @@ class OcrParser {
   static const _cur = r'(?:ETB|Birr|Br\.?|ብር|Qarshii)?\s*';
 
   static final _providers = <String, RegExp>{
-    'Telebirr': RegExp(r'tele\s?birr|ethio\s?telecom|ቴሌብር|ethiopian\s+telecom', caseSensitive: false),
+    'Telebirr': RegExp(
+      r'tele\s?birr|ethio\s?telecom|ቴሌብር|ethiopian\s+telecom|'
+      r'transaction\s*type\s*:\s*(?:transfer\s*money|send\s*money|pay\s*merchant)|'
+      r'transaction\s*number\s*:\s*DJ[A-Z0-9]{8}',
+      caseSensitive: false,
+    ),
     'CBE Birr': RegExp(r'cbe\s?birr|ሲቢኢ\s*ብር', caseSensitive: false),
     'CBE': RegExp(r'commercial\s+bank(?:\s+of\s+ethiopia)?|\bcbe\b|የኢትዮጵያ\s+ንግድ\s+ባንክ', caseSensitive: false),
     'Awash': RegExp(r'awash\s*(?:bank|birr)?|አዋሽ', caseSensitive: false),
     'Dashen': RegExp(r'dashen|amole|ዳሽን', caseSensitive: false),
     'Abyssinia': RegExp(r'abyssinia|boa\b|አቢሲኒያ', caseSensitive: false),
     'M-Pesa': RegExp(r'm-?pesa|safaricom|ኤምፔሳ', caseSensitive: false),
-    'Zemen': RegExp(r'zemen|ዘመን', caseSensitive: false),
+    'Zemen': RegExp(r'\bzemen\s*(?:bank|ባንክ)?\b(?!\s*gebeya)|\bዘመን\s*ባንክ\b', caseSensitive: false),
     'Wegagen': RegExp(r'wegagen|ወጋገን', caseSensitive: false),
     'Hibret': RegExp(r'hibret|lion\s+bank|ህብረት', caseSensitive: false),
     'Nib': RegExp(r'\bnib\b|ንብ', caseSensitive: false),
@@ -230,6 +235,38 @@ class OcrParser {
     }
     // Note: If no explicit label or known bank pattern matches, reference remains null.
     // We do NOT guess or pick random OCR words as transaction IDs.
+
+    // 2.1 Smart Provider Cross-Check from definitive bank reference prefixes:
+    if (reference != null) {
+      final refUpper = reference.toUpperCase();
+      if (RegExp(r'^(?:DJ|CR)[A-Z0-9]{8}$').hasMatch(refUpper)) {
+        provider = 'Telebirr';
+      } else if (refUpper.startsWith('FT')) {
+        provider = 'CBE';
+      } else if (refUpper.startsWith('DA')) {
+        provider = 'Dashen';
+      } else if (refUpper.startsWith('AW')) {
+        provider = 'Awash';
+      } else if (refUpper.startsWith('MP')) {
+        provider = 'M-Pesa';
+      } else if (refUpper.startsWith('CP')) {
+        provider = 'Coopay';
+      } else if (refUpper.startsWith('SQ')) {
+        provider = 'Sinqee';
+      } else if (refUpper.startsWith('WG')) {
+        provider = 'Wegagen';
+      } else if (refUpper.startsWith('HB')) {
+        provider = 'Hibret';
+      }
+    }
+
+    // Additional check for Telebirr SuperApp transfer receipt:
+    if (provider == null || provider == 'Other' || provider == 'Zemen') {
+      final lower = text.toLowerCase();
+      if (lower.contains('transfer money') && (lower.contains('transaction to') || lower.contains('transaction number') || lower.contains('finished'))) {
+        provider = 'Telebirr';
+      }
+    }
 
     // 3. Detect Amount (Direct transfer extraction without auto-fee subtraction)
     // Collect all explicit fee, VAT, service charge, and tax numbers to exclude them

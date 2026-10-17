@@ -51,7 +51,17 @@ class SmsStationNotifier extends StateNotifier<SmsStationState> {
     final disabledByUser = prefs.getBool('station_disabled_by_user') ?? false;
 
     final user = ref.read(authProvider);
-    if (!running && !disabledByUser && user != null && !user.isSuperAdmin && user.orgId.isNotEmpty) {
+    // Role-based guard: ONLY 'owner' should run the SMS verification station and request SMS permissions!
+    // Waiters and other staff should NEVER be prompted for SMS permissions.
+    if (user != null && user.role != 'owner') {
+      if (running) {
+        await SmsListenerService.instance.stopStation();
+      }
+      state = state.copyWith(isRunning: false);
+      return;
+    }
+
+    if (!running && !disabledByUser && user != null && user.role == 'owner' && user.orgId.isNotEmpty) {
       final success = await SmsListenerService.instance.startStation(orgId: user.orgId);
       state = state.copyWith(isRunning: success);
     } else {
@@ -66,7 +76,7 @@ class SmsStationNotifier extends StateNotifier<SmsStationState> {
     if (disabledByUser) return;
 
     final user = ref.read(authProvider);
-    if (user != null && !user.isSuperAdmin && user.orgId.isNotEmpty) {
+    if (user != null && user.role == 'owner' && user.orgId.isNotEmpty) {
       final success = await SmsListenerService.instance.startStation(orgId: user.orgId);
       if (success) {
         state = state.copyWith(isRunning: true);
@@ -127,7 +137,7 @@ class SmsStationNotifier extends StateNotifier<SmsStationState> {
   Future<bool> toggleStation() async {
     final user = ref.read(authProvider);
     final orgId = user?.orgId;
-    if (orgId == null) return false;
+    if (orgId == null || user?.role != 'owner') return false;
     final prefs = ref.read(prefsProvider);
 
     if (state.isRunning) {

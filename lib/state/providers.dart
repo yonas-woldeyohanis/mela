@@ -268,11 +268,26 @@ class SyncNotifier extends Notifier<SyncState> {
                   fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
                 );
           }
-          final row = await sb
-              .from('transactions')
-              .upsert(r.toCloud(cloudPath), onConflict: 'org_id,local_id')
-              .select('is_flagged, verification_status')
-              .single();
+          final payload = r.toCloud(cloudPath);
+          Map<String, dynamic> row;
+          try {
+            row = await sb
+                .from('transactions')
+                .upsert(payload, onConflict: 'org_id,local_id')
+                .select('is_flagged, verification_status')
+                .single();
+          } on PostgrestException catch (e) {
+            if (e.message.toLowerCase().contains('receipt_url') && payload.containsKey('receipt_url')) {
+              payload.remove('receipt_url');
+              row = await sb
+                  .from('transactions')
+                  .upsert(payload, onConflict: 'org_id,local_id')
+                  .select('is_flagged, verification_status')
+                  .single();
+            } else {
+              rethrow;
+            }
+          }
           final f = row['is_flagged'] == true;
           final vStatus = (row['verification_status'] as String?) ?? 'awaiting';
           await LocalDb.instance.markSynced(r.localId, cloudPath, f, verificationStatus: vStatus);

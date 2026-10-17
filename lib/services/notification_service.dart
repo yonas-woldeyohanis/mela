@@ -17,19 +17,24 @@ class NotificationService {
       const settings = InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestBadgePermission: true,
-          requestSoundPermission: true,
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
         ),
       );
       await _plugin.initialize(settings);
-      await _plugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
       _ready = true;
     } catch (e) {
       debugPrint('Notification init failed: $e');
     }
+  }
+
+  Future<void> requestPermission() async {
+    try {
+      await _plugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+    } catch (_) {}
   }
 
   Future<void> show(String title, String body, {bool alert = false}) async {

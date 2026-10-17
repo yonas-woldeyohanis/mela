@@ -236,7 +236,7 @@ class LocalDb {
   Future<List<Receipt>> pending(String waiterId) async {
     final db = await _database;
     final rows = await db.query('receipts',
-        where: "waiter_id = ? AND sync_status = 'pending'", whereArgs: [waiterId], orderBy: 'created_at ASC');
+        where: "waiter_id = ? AND (sync_status = 'pending' OR sync_status = 'failed')", whereArgs: [waiterId], orderBy: 'created_at ASC');
     return rows.map(Receipt.fromMap).toList();
   }
 

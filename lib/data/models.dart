@@ -62,21 +62,26 @@ class Receipt {
         createdAt: DateTime.fromMillisecondsSinceEpoch(m['created_at'] as int),
       );
 
-  Map<String, dynamic> toCloud(String? cloudImagePath) => {
-        'local_id': localId,
-        'org_id': orgId,
-        'waiter_id': waiterId,
-        'table_number': tableNumber,
-        'amount': amount,
-        'reference_number': reference,
-        'payment_provider': provider,
-        'sender_name': sender,
-        'receipt_url': receiptUrl,
-        'image_url': cloudImagePath,
-        'sync_status': 'synced',
-        'verification_status': verificationStatus,
-        'created_at': createdAt.toUtc().toIso8601String(),
-      };
+  Map<String, dynamic> toCloud(String? cloudImagePath) {
+    final map = <String, dynamic>{
+      'local_id': localId,
+      'org_id': orgId,
+      'waiter_id': waiterId,
+      'table_number': tableNumber,
+      'amount': amount,
+      'reference_number': reference,
+      'payment_provider': provider,
+      'sender_name': sender,
+      'image_url': cloudImagePath,
+      'sync_status': 'synced',
+      'verification_status': verificationStatus,
+      'created_at': createdAt.toUtc().toIso8601String(),
+    };
+    if (receiptUrl != null && receiptUrl!.trim().isNotEmpty) {
+      map['receipt_url'] = receiptUrl!.trim();
+    }
+    return map;
+  }
 }
 
 class CloudTx {
