@@ -10,6 +10,7 @@ class Receipt {
     this.provider,
     this.sender,
     this.receiptTime,
+    this.receiptUrl,
     this.imagePath,
     this.imageUrl,
     this.syncStatus = 'pending',
@@ -18,7 +19,7 @@ class Receipt {
   });
 
   final String localId, orgId, waiterId, reference, syncStatus, verificationStatus;
-  final String? tableNumber, provider, sender, receiptTime, imagePath, imageUrl;
+  final String? tableNumber, provider, sender, receiptTime, receiptUrl, imagePath, imageUrl;
   final double amount;
   final bool isFlagged;
   final DateTime createdAt;
@@ -33,6 +34,7 @@ class Receipt {
         'payment_provider': provider,
         'sender_name': sender,
         'receipt_time': receiptTime,
+        'receipt_url': receiptUrl,
         'image_path': imagePath,
         'image_url': imageUrl,
         'sync_status': syncStatus,
@@ -51,6 +53,7 @@ class Receipt {
         provider: m['payment_provider'] as String?,
         sender: m['sender_name'] as String?,
         receiptTime: m['receipt_time'] as String?,
+        receiptUrl: m['receipt_url'] as String?,
         imagePath: m['image_path'] as String?,
         imageUrl: m['image_url'] as String?,
         syncStatus: m['sync_status'] as String,
@@ -68,6 +71,7 @@ class Receipt {
         'reference_number': reference,
         'payment_provider': provider,
         'sender_name': sender,
+        'receipt_url': receiptUrl,
         'image_url': cloudImagePath,
         'sync_status': 'synced',
         'verification_status': verificationStatus,
@@ -85,6 +89,7 @@ class CloudTx {
     this.tableNumber,
     this.provider,
     this.sender,
+    this.receiptUrl,
     this.imageUrl,
     this.verificationStatus = 'awaiting',
     this.isFlagged = false,
@@ -92,7 +97,7 @@ class CloudTx {
   });
 
   final String id, waiterId, reference;
-  final String? tableNumber, provider, sender, imageUrl;
+  final String? tableNumber, provider, sender, receiptUrl, imageUrl;
   final double amount;
   final String verificationStatus; // verified, mismatch, awaiting, unverified
   final bool isFlagged, flagResolved;
@@ -110,6 +115,7 @@ class CloudTx {
         tableNumber: j['table_number'] as String?,
         provider: j['payment_provider'] as String?,
         sender: j['sender_name'] as String?,
+        receiptUrl: j['receipt_url'] as String?,
         imageUrl: j['image_url'] as String?,
         verificationStatus: (j['verification_status'] as String?) ?? 'awaiting',
         isFlagged: j['is_flagged'] == true,
@@ -125,6 +131,7 @@ class CloudTx {
         'reference_number': reference,
         'payment_provider': provider,
         'sender_name': sender,
+        'receipt_url': receiptUrl,
         'image_url': imageUrl,
         'verification_status': verificationStatus,
         'is_flagged': isFlagged ? 1 : 0,
@@ -141,6 +148,7 @@ class CloudTx {
         tableNumber: m['table_number'] as String?,
         provider: m['payment_provider'] as String?,
         sender: m['sender_name'] as String?,
+        receiptUrl: m['receipt_url'] as String?,
         imageUrl: m['image_url'] as String?,
         verificationStatus: (m['verification_status'] as String?) ?? 'awaiting',
         isFlagged: (m['is_flagged'] as int?) == 1,

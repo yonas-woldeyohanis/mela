@@ -17,7 +17,7 @@ class LocalDb {
     if (_db != null) return _db!;
     _db = await openDatabase(
       p.join(await getDatabasesPath(), 'swiftreceipt.db'),
-      version: 3,
+      version: 4,
       onCreate: (db, v) async {
         await db.execute('''
           CREATE TABLE receipts(
@@ -30,6 +30,7 @@ class LocalDb {
             payment_provider TEXT,
             sender_name TEXT,
             receipt_time TEXT,
+            receipt_url TEXT,
             image_path TEXT,
             image_url TEXT,
             sync_status TEXT NOT NULL DEFAULT 'pending',
@@ -68,6 +69,7 @@ class LocalDb {
             reference_number TEXT NOT NULL,
             payment_provider TEXT,
             sender_name TEXT,
+            receipt_url TEXT,
             image_url TEXT,
             sync_status TEXT,
             verification_status TEXT,
@@ -124,6 +126,7 @@ class LocalDb {
                 reference_number TEXT NOT NULL,
                 payment_provider TEXT,
                 sender_name TEXT,
+                receipt_url TEXT,
                 image_url TEXT,
                 sync_status TEXT,
                 verification_status TEXT,
@@ -143,6 +146,14 @@ class LocalDb {
                 retries INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
               )''');
+          } catch (_) {}
+        }
+        if (oldV < 4) {
+          try {
+            await db.execute("ALTER TABLE receipts ADD COLUMN receipt_url TEXT");
+          } catch (_) {}
+          try {
+            await db.execute("ALTER TABLE cached_cloud_tx ADD COLUMN receipt_url TEXT");
           } catch (_) {}
         }
       },

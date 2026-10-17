@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
@@ -213,6 +214,19 @@ class _LiveFeedScreenState extends ConsumerState<LiveFeedScreen> {
             _row('Table', t.tableNumber ?? '—'),
             _row('Sender', t.sender ?? '—'),
             _row('Scanned', fmtDateTime(t.createdAt)),
+            if (t.receiptUrl != null && t.receiptUrl!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(42),
+                  backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  foregroundColor: const Color(0xFF10B981),
+                ),
+                onPressed: () => launchUrl(Uri.parse(t.receiptUrl!), mode: LaunchMode.externalApplication),
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: const Text('Open Official Bank Verification Slip', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ],
             if (t.needsAttention) ...[
               const SizedBox(height: 14),
               const Text('Another receipt with the same reference exists. Check both photos before dismissing.',

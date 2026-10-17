@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
@@ -28,6 +29,7 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
   late final _table = TextEditingController();
   late final _sender = TextEditingController(text: widget.parsed.sender ?? '');
   late String? _provider = widget.parsed.provider;
+  late final String? _receiptUrl = widget.parsed.receiptUrl;
   bool _saving = false;
   String? _error;
 
@@ -84,6 +86,7 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
       sender: _sender.text.trim().isEmpty ? null : _sender.text.trim(),
       tableNumber: _table.text.trim().isEmpty ? null : _table.text.trim(),
       receiptTime: widget.parsed.timeText,
+      receiptUrl: _receiptUrl,
       imagePath: path,
       verificationStatus: vStatus,
       createdAt: DateTime.now(),
@@ -101,6 +104,7 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
       sender: _sender.text.trim().isEmpty ? null : _sender.text.trim(),
       waiterName: user.fullName,
       orgName: user.orgName,
+      receiptUrl: _receiptUrl,
     );
 
     if (settings.haptics) HapticFeedback.lightImpact();
@@ -235,6 +239,76 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
               ]),
             );
           }),
+          if (_provider == 'Telebirr' || widget.parsed.provider == 'Telebirr') ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF005DAA).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF0072CE), width: 1.5),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Color(0xFF0094FF), size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Telebirr Transfer Warning',
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF0094FF)),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'Check the customer slip carefully! Make sure to place the REAL TRANSFERRED / SENT amount (what entered the hotel account), NOT the Total Paid with transfer fee or customer balance.',
+                          style: TextStyle(fontSize: 12, color: Colors.white, height: 1.3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_receiptUrl != null && _receiptUrl!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.qr_code_2_rounded, color: Color(0xFF10B981), size: 24),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Official Bank Receipt Link', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF10B981))),
+                        Text(_receiptUrl!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    onPressed: () => launchUrl(Uri.parse(_receiptUrl!), mode: LaunchMode.externalApplication),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                    label: const Text('Open & Check', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           TextField(
             controller: _amount,
@@ -242,6 +316,31 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
             style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
             decoration: const InputDecoration(labelText: 'Amount (Net Received)', prefixText: '${AppConfig.currency}  '),
           ),
+          if (widget.parsed.netAmount != null && widget.parsed.totalPaid != null && widget.parsed.netAmount != widget.parsed.totalPaid) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                ChoiceChip(
+                  avatar: const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF10B981)),
+                  label: Text('Net: ${widget.parsed.netAmount!.toStringAsFixed(2)} ETB (Received)'),
+                  selected: _amount.text == widget.parsed.netAmount!.toStringAsFixed(2),
+                  onSelected: (sel) {
+                    if (sel) setState(() => _amount.text = widget.parsed.netAmount!.toStringAsFixed(2));
+                  },
+                ),
+                ChoiceChip(
+                  avatar: const Icon(Icons.receipt_outlined, size: 16),
+                  label: Text('Gross: ${widget.parsed.totalPaid!.toStringAsFixed(2)} ETB (With fee)'),
+                  selected: _amount.text == widget.parsed.totalPaid!.toStringAsFixed(2),
+                  onSelected: (sel) {
+                    if (sel) setState(() => _amount.text = widget.parsed.totalPaid!.toStringAsFixed(2));
+                  },
+                ),
+              ],
+            ),
+          ],
           if (widget.parsed.fee != null && widget.parsed.fee! > 0 && widget.parsed.totalPaid != null) ...[
             const SizedBox(height: 6),
             Container(
@@ -259,24 +358,6 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
                     child: Text(
                       'Customer paid ${widget.parsed.totalPaid!.toStringAsFixed(2)} ETB (${widget.parsed.fee!.toStringAsFixed(2)} ETB fee deducted). Net received: ${widget.parsed.amount!.toStringAsFixed(2)} ETB',
                       style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        final netStr = widget.parsed.amount!.toStringAsFixed(2);
-                        final grossStr = widget.parsed.totalPaid!.toStringAsFixed(2);
-                        _amount.text = (_amount.text == netStr) ? grossStr : netStr;
-                      });
-                    },
-                    child: Text(
-                      _amount.text == widget.parsed.amount!.toStringAsFixed(2) ? 'Use Gross' : 'Use Net',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],

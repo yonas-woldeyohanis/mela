@@ -1,4 +1,3 @@
-/// Client-side robust regex and layout extraction for Ethiopian mobile-money / bank receipts.
 class ParsedReceipt {
   const ParsedReceipt({
     this.amount,
@@ -10,6 +9,7 @@ class ParsedReceipt {
     this.sender,
     this.receiver,
     this.timeText,
+    this.receiptUrl,
     this.rawText = '',
   });
 
@@ -18,7 +18,7 @@ class ParsedReceipt {
   final double? netAmount;
   final double? fee;
   final double? totalPaid;
-  final String? reference, provider, sender, receiver, timeText;
+  final String? reference, provider, sender, receiver, timeText, receiptUrl;
   final String rawText;
 
   int get found => [amount, reference, provider].where((e) => e != null).length;
@@ -140,7 +140,7 @@ class OcrParser {
     return (v != null && v > 0) ? v : null;
   }
 
-  static ParsedReceipt parse(String raw) {
+  static ParsedReceipt parse(String raw, {String? qrUrl}) {
     final text = raw.replaceAll('\r', '');
     final lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
 
@@ -150,6 +150,21 @@ class OcrParser {
       if (e.value.hasMatch(text)) {
         provider = e.key;
         break;
+      }
+    }
+    // Infer provider from QR URL if not in text
+    if (provider == null && qrUrl != null) {
+      final urlLower = qrUrl.toLowerCase();
+      if (urlLower.contains('cbe.com.et') || urlLower.contains('cbe')) {
+        provider = 'CBE';
+      } else if (urlLower.contains('telebirr') || urlLower.contains('ethiotelecom')) {
+        provider = 'Telebirr';
+      } else if (urlLower.contains('awash')) {
+        provider = 'Awash';
+      } else if (urlLower.contains('dashen')) {
+        provider = 'Dashen';
+      } else if (urlLower.contains('bankofabyssinia') || urlLower.contains('abyssinia')) {
+        provider = 'Abyssinia';
       }
     }
 
@@ -166,11 +181,20 @@ class OcrParser {
         }
       }
     }
-    // Check known digital receipt URLs
+    // Check known digital receipt URLs in OCR text or scanned QR code
     if (reference == null) {
-      final urlCbe = RegExp(r'mbreciept\.cbe\.com\.et\/([A-Za-z0-9_\-]+)', caseSensitive: false).firstMatch(text);
+      final urlSource = '$text\n${qrUrl ?? ''}';
+      final urlCbe = RegExp(r'mbreciept\.cbe\.com\.et\/([A-Za-z0-9_\-]+)', caseSensitive: false).firstMatch(urlSource);
       if (urlCbe != null) {
         reference = urlCbe.group(1)?.trim();
+        provider ??= 'CBE';
+      }
+    }
+    if (reference == null) {
+      final urlSource = '$text\n${qrUrl ?? ''}';
+      final urlTrx = RegExp(r'(?:slip/\?trx=|trx=|[?&]id=|[?&]ref=)([A-Za-z0-9_\-]{6,30})', caseSensitive: false).firstMatch(urlSource);
+      if (urlTrx != null) {
+        reference = urlTrx.group(1)?.trim().toUpperCase();
       }
     }
     if (reference == null) {
@@ -431,6 +455,7 @@ class OcrParser {
       sender: sender?.isEmpty == true ? null : sender,
       receiver: receiver?.isEmpty == true ? null : receiver,
       timeText: time,
+      receiptUrl: qrUrl,
       rawText: text,
     );
   }

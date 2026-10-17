@@ -85,8 +85,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
     try {
       final shot = await c.takePicture();
       path = shot.path;
-      final text = await ReceiptPipeline.ocr(path);
-      final parsed = OcrParser.parse(text);
+      final scanResult = await ReceiptPipeline.scanImage(path);
+      final parsed = OcrParser.parse(scanResult.text, qrUrl: scanResult.qrUrl);
       if (!mounted) return;
       final saved = await showModalBottomSheet<bool>(
         context: context,
@@ -119,8 +119,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       if (file == null || !mounted) return;
 
       setState(() => _busy = true);
-      final text = await ReceiptPipeline.ocr(file.path);
-      final parsed = OcrParser.parse(text);
+      final scanResult = await ReceiptPipeline.scanImage(file.path);
+      final parsed = OcrParser.parse(scanResult.text, qrUrl: scanResult.qrUrl);
       if (!mounted) return;
 
       final saved = await showModalBottomSheet<bool>(

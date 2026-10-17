@@ -107,6 +107,7 @@ class TelegramBackupService {
     String? sender,
     String? waiterName,
     String? orgName,
+    String? receiptUrl,
   }) async {
     try {
       final enabled = await isEnabled();
@@ -123,7 +124,7 @@ class TelegramBackupService {
 🏦 *Provider*: $provider
 👤 *Staff*: ${waiterName ?? 'Staff'}
 📅 *Date*: $dateStr
-${sender != null ? '👤 *Payer*: $sender\n' : ''}#receipt #payment
+${sender != null ? '👤 *Payer*: $sender\n' : ''}${receiptUrl != null && receiptUrl.isNotEmpty ? '🔗 *Bank Link*: $receiptUrl\n' : ''}#receipt #payment
 ''';
 
       await LocalDb.instance.queueTelegramUpload(

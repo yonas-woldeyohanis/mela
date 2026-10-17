@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/config.dart';
 import '../../core/utils.dart';
 import '../../data/models.dart';
@@ -325,6 +326,19 @@ class _LedgerScreenState extends ConsumerState<LedgerScreen> {
             if (r.tableNumber != null) _row('Table', r.tableNumber!),
             _row('Scanned at', '${fmtDate(r.createdAt)} · ${fmtTime(r.createdAt)}'),
             if (r.receiptTime != null) _row('Receipt timestamp', r.receiptTime!),
+            if (r.receiptUrl != null && r.receiptUrl!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(42),
+                  backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  foregroundColor: const Color(0xFF10B981),
+                ),
+                onPressed: () => launchUrl(Uri.parse(r.receiptUrl!), mode: LaunchMode.externalApplication),
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: const Text('Open Official Bank Verification Slip', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ],
             const SizedBox(height: 14),
             if (r.imagePath != null && File(r.imagePath!).existsSync())
               ClipRRect(
