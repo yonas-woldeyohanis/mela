@@ -4,19 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../core/utils.dart';
+import '../../data/business_settings.dart';
 import '../../data/models.dart';
+import '../../state/business_settings_provider.dart';
 import '../../state/providers.dart';
 import '../widgets.dart';
-
-enum ShiftFilter {
-  allDay('All Day', null),
-  morning('Day Shift', '07:00 – 15:30'),
-  evening('Night Shift', '15:30 – 00:00');
-
-  const ShiftFilter(this.label, this.timeRange);
-  final String label;
-  final String? timeRange;
-}
+import 'shift_config_dialog.dart';
 
 class AuditScreen extends ConsumerStatefulWidget {
   const AuditScreen({super.key});
@@ -29,7 +22,8 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
   final _cash = TextEditingController();
   final _note = TextEditingController();
 
-  ShiftFilter _selectedShift = ShiftFilter.allDay;
+  // Selected shift ID ('all', or shift.id e.g. 'shift_1', 'shift_2')
+  String _selectedShiftId = 'all';
   bool _saving = false;
 
   // Individual waiter settlement inputs (waiterId -> billed order total controller)
@@ -48,21 +42,37 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
 
   double _val(TextEditingController c) => double.tryParse(c.text.replaceAll(',', '').trim()) ?? 0;
 
-  List<CloudTx> _filterByShift(List<CloudTx> txs, DateTime day, ShiftFilter shift) {
-    final dayRows = txs.where((t) => sameDay(t.createdAt, day)).toList();
-    if (shift == ShiftFilter.allDay) return dayRows;
+  DateTime _effectiveBusinessDate(DateTime dt, int rolloverHour) {
+    final local = dt.toLocal();
+    if (rolloverHour > 0 && local.hour < rolloverHour) {
+      return DateTime(local.year, local.month, local.day - 1);
+    }
+    return DateTime(local.year, local.month, local.day);
+  }
 
-    return dayRows.where((t) {
-      final hour = t.createdAt.hour;
-      final min = t.createdAt.minute;
-      final totalMins = hour * 60 + min;
-
-      if (shift == ShiftFilter.morning) {
-        return totalMins >= 7 * 60 && totalMins <= (15 * 60 + 30);
-      } else {
-        return totalMins > (15 * 60 + 30);
-      }
+  List<CloudTx> _filterTransactions({
+    required List<CloudTx> txs,
+    required DateTime targetDay,
+    required BusinessSettings settings,
+    required String shiftId,
+  }) {
+    // 1. Filter by business date considering rollover hour
+    final dayRows = txs.where((t) {
+      final bDate = _effectiveBusinessDate(t.createdAt, settings.businessRolloverHour);
+      return bDate.year == targetDay.year && bDate.month == targetDay.month && bDate.day == targetDay.day;
     }).toList();
+
+    if (settings.shiftMode == ShiftMode.none || shiftId == 'all') {
+      return dayRows;
+    }
+
+    // 2. Filter by specific shift time window
+    final shift = settings.activeShifts.firstWhere(
+      (s) => s.id == shiftId,
+      orElse: () => settings.shift1,
+    );
+
+    return dayRows.where((t) => shift.containsTime(t.createdAt.toLocal())).toList();
   }
 
   Future<void> _shareReport({
@@ -70,11 +80,12 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
     required String orgName,
     required String managerName,
     required DateTime date,
-    required ShiftFilter shift,
+    required String shiftLabel,
     required double digitalTotal,
     required double posTotal,
     required double cashTotal,
     required double diff,
+    required double tolerance,
     required Map<String, double> providerTotals,
     required Map<String, int> providerCounts,
     required Map<String, double> waiterTotals,
@@ -82,12 +93,13 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
     required Map<String, String> staffNames,
     required int verifiedCount,
     required int flaggedCount,
+    required String ownerContact,
     String? note,
   }) async {
     final df = DateFormat('EEE, d MMM yyyy');
-    final shiftStr = shift == ShiftFilter.allDay ? 'Full Day' : '${shift.label} (${shift.timeRange})';
-    final varStr = diff.abs() < 0.01
-        ? 'BALANCED ✅ (ETB 0.00)'
+    final isBalanced = diff.abs() <= tolerance;
+    final varStr = isBalanced
+        ? 'BALANCED ✅ (${tolerance > 0 ? "within ±${fmtMoney(tolerance)}" : "ETB 0.00"})'
         : diff > 0
             ? 'OVER by +${fmtCurrency(diff)} ⚠️'
             : 'SHORT by -${fmtCurrency(-diff)} 🔴';
@@ -95,8 +107,11 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
     final sb = StringBuffer();
     sb.writeln('📊 *Mela Shift Closing Report*');
     sb.writeln('🏢 *Business:* $orgName');
-    sb.writeln('📅 *Date:* ${df.format(date)} · $shiftStr');
+    sb.writeln('📅 *Date:* ${df.format(date)} · $shiftLabel');
     sb.writeln('👤 *Closed by:* $managerName');
+    if (ownerContact.isNotEmpty) {
+      sb.writeln('📱 *Report To:* $ownerContact');
+    }
     sb.writeln();
     sb.writeln('💰 *FINANCIAL OVERVIEW*');
     sb.writeln('• Total Billed (POS):  ${fmtCurrency(posTotal)}');
@@ -158,13 +173,13 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
     }
   }
 
-  Future<void> _close(double digital) async {
+  Future<void> _close(double digital, String shiftLabel) async {
     final user = ref.read(authProvider)!;
     final day = ref.read(mgrDayProvider);
     final pos = _val(_pos), cash = _val(_cash);
     setState(() => _saving = true);
     try {
-      final shiftSuffix = _selectedShift == ShiftFilter.allDay ? '' : ' [${_selectedShift.label}]';
+      final shiftSuffix = shiftLabel == 'Full Day' ? '' : ' [$shiftLabel]';
       final noteText = '${_note.text.trim()}$shiftSuffix'.trim();
 
       await sb.from('audits').insert({
@@ -206,12 +221,28 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
     final cs = Theme.of(context).colorScheme;
     final user = ref.watch(authProvider);
     final day = ref.watch(mgrDayProvider);
+    final bSettings = ref.watch(businessSettingsProvider);
     final txAll = ref.watch(cloudTxProvider).valueOrNull ?? const [];
     final staffList = ref.watch(staffProvider).valueOrNull ?? const <Staff>[];
     final staffNames = {for (final s in staffList) s.id: s.fullName};
 
-    // Filter by date and selected shift
-    final filteredRows = _filterByShift(txAll, day, _selectedShift);
+    // Ensure selected shift is valid for current shift mode
+    if (bSettings.shiftMode == ShiftMode.none) {
+      _selectedShiftId = 'all';
+    } else {
+      final validIds = ['all', ...bSettings.activeShifts.map((s) => s.id)];
+      if (!validIds.contains(_selectedShiftId)) {
+        _selectedShiftId = 'all';
+      }
+    }
+
+    // Filter by business date and selected shift
+    final filteredRows = _filterTransactions(
+      txs: txAll,
+      targetDay: day,
+      settings: bSettings,
+      shiftId: _selectedShiftId,
+    );
 
     final digital = filteredRows.fold<double>(0, (a, t) => a + t.amount);
     final flagged = filteredRows.where((t) => t.needsAttention).length;
@@ -237,34 +268,73 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
 
     final pos = _val(_pos), cash = _val(_cash);
     final diff = digital + cash - pos;
-    final balanced = pos > 0 && diff.abs() < 0.01;
+    final balanced = pos > 0 && diff.abs() <= bSettings.varianceTolerance;
     final diffColor = pos == 0 ? cs.outline : balanced ? StatusColors.synced : diff > 0 ? StatusColors.pending : StatusColors.flagged;
     final audits = ref.watch(auditsProvider).valueOrNull ?? const [];
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 32), children: [
-      DayNavigator(day: day, onChanged: (d) => ref.read(mgrDayProvider.notifier).state = d),
+    // Current shift display label
+    String currentShiftLabel = 'Full Day';
+    String? currentShiftTimeRange;
+    if (_selectedShiftId != 'all' && bSettings.shiftMode != ShiftMode.none) {
+      for (final s in bSettings.activeShifts) {
+        if (s.id == _selectedShiftId) {
+          currentShiftLabel = s.name;
+          currentShiftTimeRange = s.timeRangeString;
+          break;
+        }
+      }
+    }
 
-      // ─── 1. SHIFT SELECTOR ───
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: SegmentedButton<ShiftFilter>(
-          segments: [
-            for (final s in ShiftFilter.values)
-              ButtonSegment<ShiftFilter>(
-                value: s,
-                label: Text(s.label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                icon: Icon(
-                  s == ShiftFilter.allDay ? Icons.today_rounded : s == ShiftFilter.morning ? Icons.wb_sunny_outlined : Icons.nights_stay_outlined,
-                  size: 16,
-                ),
-              ),
-          ],
-          selected: {_selectedShift},
-          onSelectionChanged: (set) {
-            setState(() => _selectedShift = set.first);
-          },
-        ),
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 32), children: [
+      Row(
+        children: [
+          Expanded(
+            child: DayNavigator(day: day, onChanged: (d) => ref.read(mgrDayProvider.notifier).state = d),
+          ),
+          if (user?.role == 'owner' || user?.role == 'manager')
+            IconButton.filledTonal(
+              icon: const Icon(Icons.tune_rounded, size: 20),
+              tooltip: 'Shift & Audit Settings',
+              onPressed: () => ShiftConfigDialog.show(context),
+            ),
+        ],
       ),
+
+      // ─── 1. DYNAMIC SHIFT SELECTOR ───
+      if (bSettings.shiftMode != ShiftMode.none) ...[
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SegmentedButton<String>(
+              segments: [
+                const ButtonSegment<String>(
+                  value: 'all',
+                  label: Text('All Day', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  icon: Icon(Icons.today_rounded, size: 16),
+                ),
+                for (final s in bSettings.activeShifts)
+                  ButtonSegment<String>(
+                    value: s.id,
+                    label: Text('${s.name} (${s.timeRangeString})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    icon: Icon(
+                      s.id == 'shift_1'
+                          ? Icons.wb_sunny_outlined
+                          : s.id == 'shift_2'
+                              ? Icons.nights_stay_outlined
+                              : Icons.bedtime_outlined,
+                      size: 16,
+                    ),
+                  ),
+              ],
+              selected: {_selectedShiftId},
+              onSelectionChanged: (set) {
+                setState(() => _selectedShiftId = set.first);
+              },
+            ),
+          ),
+        ),
+      ],
 
       // ─── 2. SHIFT REVENUE OVERVIEW CARD ───
       Panel(
@@ -273,12 +343,12 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                _selectedShift == ShiftFilter.allDay
+                bSettings.shiftMode == ShiftMode.none
                     ? 'Digitized Transfers (Full Day)'
-                    : 'Transfers · ${_selectedShift.label}',
+                    : 'Transfers · $currentShiftLabel',
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
-              if (_selectedShift.timeRange != null)
+              if (currentShiftTimeRange != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
@@ -286,7 +356,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    _selectedShift.timeRange!,
+                    currentShiftTimeRange,
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onPrimaryContainer),
                   ),
                 ),
@@ -346,7 +416,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Center(
-                child: Text('No digital transactions in this shift.', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                child: Text('No digital transactions in this period.', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
               ),
             )
           else
@@ -416,7 +486,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Center(
-                child: Text('No waiter transactions logged for this shift.', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                child: Text('No waiter transactions logged for this period.', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
               ),
             )
           else
@@ -484,7 +554,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
                           decoration: BoxDecoration(
                             color: wBilled == 0
                                 ? cs.surfaceContainerHighest.withValues(alpha: 0.4)
-                                : wCashOwed.abs() < 0.01
+                                : wCashOwed.abs() <= bSettings.varianceTolerance
                                     ? StatusColors.synced.withValues(alpha: 0.12)
                                     : wCashOwed > 0
                                         ? StatusColors.pending.withValues(alpha: 0.15)
@@ -495,7 +565,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
                             Text(
                               wBilled == 0
                                   ? 'Cash to hand in'
-                                  : wCashOwed.abs() < 0.01
+                                  : wCashOwed.abs() <= bSettings.varianceTolerance
                                       ? 'Settled (All Digital)'
                                       : wCashOwed > 0
                                           ? 'Owes Cash'
@@ -505,7 +575,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
                                 fontWeight: FontWeight.w600,
                                 color: wBilled == 0
                                     ? cs.onSurfaceVariant
-                                    : wCashOwed.abs() < 0.01
+                                    : wCashOwed.abs() <= bSettings.varianceTolerance
                                         ? StatusColors.synced
                                         : wCashOwed > 0
                                             ? StatusColors.pending
@@ -535,7 +605,17 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
       // ─── 5. SHIFT RECONCILIATION & CLOSING ───
       Panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Shift Total Reconciliation', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Reconciliation · $currentShiftLabel', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+              if (bSettings.varianceTolerance > 0)
+                Text(
+                  'Tolerance: ±${fmtMoney(bSettings.varianceTolerance)} ETB',
+                  style: TextStyle(fontSize: 11, color: cs.primary, fontWeight: FontWeight.w600),
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _pos,
@@ -607,7 +687,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
             Expanded(
               flex: 3,
               child: FilledButton.icon(
-                onPressed: _saving || pos == 0 ? null : () => _close(digital),
+                onPressed: _saving || pos == 0 ? null : () => _close(digital, currentShiftLabel),
                 icon: _saving
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.lock_clock_rounded, size: 18),
@@ -623,11 +703,12 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
                   orgName: user?.orgName ?? 'Restaurant',
                   managerName: user?.fullName ?? 'Manager',
                   date: day,
-                  shift: _selectedShift,
+                  shiftLabel: currentShiftLabel,
                   digitalTotal: digital,
                   posTotal: pos,
                   cashTotal: cash,
                   diff: diff,
+                  tolerance: bSettings.varianceTolerance,
                   providerTotals: providerTotals,
                   providerCounts: providerCounts,
                   waiterTotals: waiterTotals,
@@ -635,6 +716,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
                   staffNames: staffNames,
                   verifiedCount: verified,
                   flaggedCount: flagged,
+                  ownerContact: bSettings.ownerReportContact,
                   note: _note.text.trim().isEmpty ? null : _note.text.trim(),
                 ),
                 icon: const Icon(Icons.share_rounded, size: 17),
@@ -674,8 +756,8 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
                     ]),
                   ),
                   StatusPill(
-                    a.difference.abs() < 0.01 ? 'Balanced' : '${a.difference > 0 ? '+' : ''}${fmtMoney(a.difference)}',
-                    a.difference.abs() < 0.01 ? StatusColors.synced : StatusColors.flagged,
+                    a.difference.abs() <= bSettings.varianceTolerance ? 'Balanced' : '${a.difference > 0 ? '+' : ''}${fmtMoney(a.difference)}',
+                    a.difference.abs() <= bSettings.varianceTolerance ? StatusColors.synced : StatusColors.flagged,
                   ),
                 ]),
                 if (a.note != null && a.note!.isNotEmpty) ...[

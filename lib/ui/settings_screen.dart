@@ -10,8 +10,11 @@ import '../state/providers.dart';
 import '../state/security_provider.dart';
 import '../state/sms_station_provider.dart';
 import '../data/models.dart';
+import '../data/business_settings.dart';
+import '../state/business_settings_provider.dart';
 import '../services/platform_config_service.dart';
 import '../services/telegram_service.dart';
+import 'manager/shift_config_dialog.dart';
 import 'widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -27,6 +30,7 @@ class SettingsScreen extends ConsumerWidget {
     final secNotifier = ref.read(securityProvider.notifier);
     final station = ref.watch(smsStationProvider);
     final stationNotifier = ref.read(smsStationProvider.notifier);
+    final bSettings = ref.watch(businessSettingsProvider);
     final cs = Theme.of(context).colorScheme;
     final sync = ref.watch(syncProvider);
     final pending = ref.watch(pendingCountProvider).valueOrNull ?? 0;
@@ -211,6 +215,46 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        if (user.role == 'owner' || user.role == 'manager') ...[
+          _section(context, 'Shift & Audit Schedule'),
+          Panel(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.schedule_rounded, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Shift Schedule & Audit Rules', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(
+                      bSettings.shiftMode.title,
+                      style: TextStyle(fontSize: 12, color: cs.primary, fontWeight: FontWeight.w600),
+                    ),
+                  ]),
+                ),
+                IconButton.filledTonal(
+                  icon: const Icon(Icons.tune_rounded, size: 20),
+                  tooltip: 'Configure Shifts',
+                  onPressed: () => ShiftConfigDialog.show(context),
+                ),
+              ]),
+              const Divider(height: 20),
+              Text(
+                bSettings.shiftMode == ShiftMode.none
+                    ? 'Single daily closing · No shift rotations'
+                    : 'Active shifts: ${bSettings.activeShifts.map((sh) => "${sh.name} (${sh.timeRangeString})").join(" · ")}',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              ),
+              if (bSettings.ownerReportContact.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Report Recipient: ${bSettings.ownerReportContact}',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (user.role == 'owner') ...[
           _section(context, 'SMS Verification Station'),
           Panel(

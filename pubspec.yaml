@@ -1,7 +1,7 @@
 name: swiftreceipt
 description: Offline-first payment receipt capture, sync and reconciliation.
 publish_to: none
-version: 1.0.5+2006
+version: 1.0.6+2007
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
