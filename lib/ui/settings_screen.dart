@@ -94,7 +94,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Name appearing on CBE / Telebirr slips. Prevents fraud warnings when customers transfer.',
+                  'Registered merchant or business name. Prevents fraud warnings when customers transfer.',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ]),
@@ -227,7 +227,7 @@ class SettingsScreen extends ConsumerWidget {
                   const Text('Business SIM SMS Listener', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   Text(
                     station.isRunning
-                        ? 'Active · Background station verifying Telebirr & CBE'
+                        ? 'Active · Listening for incoming customer payments'
                         : 'Disabled · Turn on if this phone has the business SIM card',
                     style: TextStyle(
                       fontSize: 12,
@@ -536,7 +536,7 @@ class SettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter the registered account owner name(s) appearing on CBE, Telebirr, or Dashen payment slips:\n\n'
+              'Enter the registered account owner name(s) appearing on customer payment slips:\n\n'
               'When customers transfer money to this account name, Mela will automatically accept the receipt without fraud warnings.',
               style: TextStyle(fontSize: 13),
             ),

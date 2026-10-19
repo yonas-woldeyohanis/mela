@@ -243,7 +243,7 @@ class OcrParser {
         provider = 'Telebirr';
       } else if (refUpper.startsWith('FT')) {
         provider = 'CBE';
-      } else if (refUpper.startsWith('DA')) {
+      } else if (refUpper.startsWith('DA') && provider != 'Telebirr') {
         provider = 'Dashen';
       } else if (refUpper.startsWith('AW')) {
         provider = 'Awash';

@@ -334,7 +334,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
             _card(
               context,
               'Payment Provider Market Share',
-              subtitle: 'Telebirr, CBE Birr & Banking splits',
+              subtitle: 'Distribution across payment channels',
               child: Row(children: [
                 SizedBox(
                   width: 140,

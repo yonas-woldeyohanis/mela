@@ -741,7 +741,7 @@ class _SuperAdminDashboardScreenState extends ConsumerState<SuperAdminDashboardS
                   decoration: const InputDecoration(
                     labelText: 'Bank Account Holder Name(s)',
                     hintText: 'e.g. BETELHEM FKADU CHALA',
-                    helperText: 'Name on CBE / Telebirr slips (prevents false fraud warnings)',
+                    helperText: 'Registered merchant name (prevents false fraud warnings)',
                     prefixIcon: Icon(Icons.account_balance_rounded),
                   ),
                 ),

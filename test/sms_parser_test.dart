@@ -54,5 +54,37 @@ void main() {
       expect(res.amount, 300.0);
       expect(res.reference, 'AW20261012999');
     });
+
+    test('strictly ignores debits, outgoing transfers, and payments sent', () {
+      // 1. The exact CBE debit SMS from user's screenshot
+      const cbeDebit = 'Dear Yonas W Yohannes G Mariam You have successfully transferred ETB40.00 from account 1000123456 to 1000987654 on 18/10/2026. http://mbreciept.cbe.com.et/v2-hfHCxHMff4hHAPnkb9Qt';
+      final res1 = SmsParser.parse(sender: 'CBE', body: cbeDebit);
+      expect(res1, isNull);
+
+      // 2. Telebirr transfer out
+      const telebirrTransfer = 'You have transferred ETB 50.00 to 0911223344 on 18/10/2026. Transaction number is DJ12345678. Current balance is ETB 400.00.';
+      final res2 = SmsParser.parse(sender: '127', body: telebirrTransfer);
+      expect(res2, isNull);
+
+      // 3. Telebirr payment sent
+      const telebirrPaid = 'You have paid ETB 120.00 to Kaldis Coffee on 18/10/2026. Transaction number is DJ99887766.';
+      final res3 = SmsParser.parse(sender: 'telebirr', body: telebirrPaid);
+      expect(res3, isNull);
+
+      // 4. Bank debit / withdrawal
+      const bankDebit = 'Your account 1000123456 was debited with ETB 1,000.00 at ATM on 18/10/2026. Available balance ETB 5,000.00.';
+      final res4 = SmsParser.parse(sender: 'CBE', body: bankDebit);
+      expect(res4, isNull);
+
+      // 5. Amharic withdrawal / debit
+      const amharicDebit = 'ከሒሳብዎ 250.00 ብር ወጪ ተደርጓል:: ቀሪ ሒሳብዎ 1200.00 ብር::';
+      final res5 = SmsParser.parse(sender: 'CBE', body: amharicDebit);
+      expect(res5, isNull);
+
+      // 6. Amharic transfer out
+      const amharicTransfer = '50.00 ብር በተሳካ ሁኔታ አስተላልፈዋል:: የግብይት ቁጥር FT99881122::';
+      final res6 = SmsParser.parse(sender: 'CBE', body: amharicTransfer);
+      expect(res6, isNull);
+    });
   });
 }

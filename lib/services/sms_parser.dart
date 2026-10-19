@@ -179,10 +179,12 @@ class SmsParser {
       final isIncoming = lower.contains('received') ||
           lower.contains('ደርሶዎታል') ||
           lower.contains('ገቢ ተደርጓል') ||
+          lower.contains('ገቢ ሆኗል') ||
+          lower.contains('ሒሳብዎ ገቢ') ||
           lower.contains('credited') ||
           lower.contains('transfer to end user');
 
-      if (!isIncoming && !lower.contains('transaction number')) {
+      if (!isIncoming) {
         return null;
       }
 
@@ -246,8 +248,13 @@ class SmsParser {
         lower.contains('banking with cbe') ||
         lower.contains('የኢትዮጵያ ንግድ ባንክ') ||
         lower.contains('cbe.com.et')) {
-      final isCredit = lower.contains('credited') || lower.contains('ገቢ ተደርጓል') || lower.contains('deposited') || lower.contains('received');
-      if (!isCredit && !lower.contains('ft') && !lower.contains('mbreciept')) return null;
+      final isCredit = lower.contains('credited') ||
+          lower.contains('ገቢ ተደርጓል') ||
+          lower.contains('ገቢ ሆኗል') ||
+          lower.contains('ሒሳብዎ ገቢ') ||
+          lower.contains('deposited') ||
+          lower.contains('received');
+      if (!isCredit) return null;
 
       String? ref;
       final urlMatch = RegExp(r'mbreciept\.cbe\.com\.et\/([A-Za-z0-9_\-]+)', caseSensitive: false).firstMatch(text);

@@ -63,7 +63,19 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 context.startService(serviceIntent)
             }
         } catch (_: Exception) {
-            // Direct callback fallback
+            // Direct processing fallback if foreground service launch is delayed or restricted
+            val parsed = SmsForegroundService.parsePaymentInfo(sender, fullBody)
+            if (parsed != null) {
+                SmsForegroundService.showVerifiedNotification(context, parsed)
+                SmsForegroundService.postToSupabase(
+                    context = context,
+                    provider = parsed.provider,
+                    reference = parsed.reference,
+                    amount = parsed.amount,
+                    sender = parsed.sender,
+                    rawSms = fullBody
+                )
+            }
             MainActivity.sendSmsToFlutter(sender, fullBody, timestamp)
         }
     }

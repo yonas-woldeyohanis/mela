@@ -3,9 +3,13 @@ package com.swiftreceipt.swiftreceipt
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -109,6 +113,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun startStationService(orgId: String?, supabaseUrl: String?, supabaseKey: String?) {
+        requestIgnoreBatteryOptimizationIfNeeded()
         val serviceIntent = Intent(this, SmsForegroundService::class.java).apply {
             action = SmsForegroundService.ACTION_START
             putExtra("org_id", orgId)
@@ -119,6 +124,20 @@ class MainActivity : FlutterFragmentActivity() {
             startForegroundService(serviceIntent)
         } else {
             startService(serviceIntent)
+        }
+    }
+
+    private fun requestIgnoreBatteryOptimizationIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {}
+            }
         }
     }
 

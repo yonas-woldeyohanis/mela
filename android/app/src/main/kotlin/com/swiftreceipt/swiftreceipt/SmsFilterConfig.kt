@@ -51,22 +51,18 @@ object SmsFilterConfig {
         "deposit",
         "deposited",
         "has been credited",
-        "transferred to",
-        "transfer to end user",
+        "has been credited with",
+        "transferred to your account",
+        "transferred into your account",
         "payment received",
         "successful credit",
-        "txn id",
-        "transaction number",
-        "by transaction number",
-        "mbreciept",
-        "receipt:",
-        "slip/?trx=",
         "ደርሶዎታል",
         "ገቢ ተደርጓል",
+        "ገቢ ሆኗል",
         "ገቢ",
-        "ተላልፏል",
-        "የግብይት ቁጥር",
-        "ሒሳብዎ ገቢ"
+        "ሒሳብዎ ገቢ",
+        "ክፍያ ደርሶዎታል",
+        "galii ta'eera"
     )
 
     val ignoredKeywords = listOf(
@@ -86,15 +82,59 @@ object SmsFilterConfig {
         "recharge",
         "የአየር ሰዓት",
         "ፓኬጅ ገዝተዋል",
+        "you have successfully transferred",
         "you have transferred",
+        "successfully transferred",
         "transferred from",
+        "transferred out",
+        "you transferred",
+        "you have successfully paid",
+        "you have paid",
+        "successfully paid",
+        "you paid",
+        "payment to",
+        "you have sent",
+        "you sent",
+        "sent to",
         "debited",
-        "debit",
+        "has been debited",
+        "was debited",
+        "is debited",
         "withdrawn",
         "withdrew",
+        "withdrawal",
+        "cash out",
+        "cashout",
+        "ተቀናሽ ተደርጓል",
+        "ተቀናሽ ሆኗል",
         "ተቀናሽ",
-        "ወጪ"
+        "ወጪ ተደርጓል",
+        "ወጪ ሆኗል",
+        "ወጪ",
+        "አስተላልፈዋል",
+        "በተሳካ ሁኔታ አስተላልፈዋል",
+        "ከሒሳብዎ ወጪ",
+        "ከፍለዋል",
+        "ልከዋል",
+        "ተልኳል",
+        "baasii",
+        "ergameera",
+        "kan kaffaltan"
     )
+
+    fun isDebitOrOutgoing(body: String): Boolean {
+        val b = body.trim().lowercase()
+
+        for (bad in ignoredKeywords) {
+            if (b.contains(bad)) return true
+        }
+
+        val debitRegex = Regex(
+            """(?:you\s+have\s+(?:successfully\s+)?transferred|successfully\s+transferred|transferred\s+(?:[a-z0-9,\.]+\s+)?from|you\s+transferred|transferred\s+out|you\s+have\s+(?:successfully\s+)?paid|successfully\s+paid|you\s+paid|payment\s+to\b|you\s+have\s+sent|you\s+sent|sent\s+to\b|\bdebited\b|has\s+been\s+debited|account\s+debited|\bwithdrawn\b|\bwithdrew\b|\bwithdrawal\b|cash\s*out|airtime\s+bought|package\s+purchase|bought\s+package|recharge\s+successful|ወጪ\s*(?:ተደርጓል|ሆኗል)?|ከ(?:ሒሳብዎ|አካውንትዎ|አካውንት)\s*ወጪ|ተቀናሽ|አስተላልፈዋል|ከፍለዋል|ልከዋል|የአየር\s*ሰዓት|ፓኬጅ\s*ገዝተዋል|\bbaasii\b|\bergameera\b|kan\s+kaffaltan)""",
+            RegexOption.IGNORE_CASE
+        )
+        return debitRegex.containsMatchIn(b)
+    }
 
     fun shouldProcessSms(sender: String, body: String): Boolean {
         val s = sender.trim().lowercase()
@@ -102,20 +142,20 @@ object SmsFilterConfig {
 
         if (b.isEmpty()) return false
 
-        // 1. Block noise / OTP / personal / debit
-        for (bad in ignoredKeywords) {
-            if (b.contains(bad)) return false
+        // 1. Block noise / OTP / personal / debit / outgoing transfers
+        if (isDebitOrOutgoing(b)) {
+            return false
         }
 
         // 2. Check sender or body contains bank name
         val senderMatches = allowedSenders.any { s.contains(it) || s == it }
-        val hasIncoming = incomingKeywords.any { b.contains(it) }
+        val bodyMentionsBank = allowedSenders.any { b.contains(it) }
 
-        if (senderMatches) {
-            return hasIncoming
+        if (!senderMatches && !bodyMentionsBank) {
+            return false
         }
 
-        val bodyMentionsBank = allowedSenders.any { b.contains(it) }
-        return bodyMentionsBank && hasIncoming
+        // 3. Must match positive incoming credit keyword
+        return incomingKeywords.any { b.contains(it) }
     }
 }

@@ -85,38 +85,22 @@ class SmsFilterConfig {
     'credit',
     'deposit',
     'deposited',
-    'transferred to',
-    'transferred into',
-    'transfer to end user',
+    'transferred to your account',
+    'transferred into your account',
     'payment received',
     'payment from',
     'successful credit',
     'incoming payment',
-    'fund transfer',
-    'txn id',
-    'transaction number',
-    'transaction id',
-    'by transaction number',
     'has been credited',
     'has been credited with',
-    'ref no',
-    'reference no',
-    'trans ref',
-    'mbreciept',
-    'receipt:',
-    'slip/?trx=',
 
     // Amharic (Ethiopic)
     'ደርሶዎታል', // received
     'ገቢ ተደርጓል', // credited
     'ገቢ ሆኗል', // credited/deposited
     'ገቢ', // deposit/incoming
-    'ተላልፏል', // transferred
-    'የግብይት ቁጥር', // transaction number
     'ሒሳብዎ ገቢ', // your account credited
     'ክፍያ ደርሶዎታል', // payment received
-    'ክፍያ ተፈጽሟል', // payment made
-    'የገንዘብ ዝውውር', // money transfer
 
     // Afaan Oromoo
     'galii ta\'eera',
@@ -130,7 +114,7 @@ class SmsFilterConfig {
     // Security / Auth OTPs
     'otp',
     'verification code',
-    'confirmation code is',
+    'confirmation code',
     'secret code',
     'security code',
     'ይለፍ ቃል',
@@ -147,23 +131,105 @@ class SmsFilterConfig {
     'የአየር ሰዓት',
     'ፓኬጅ ገዝተዋል',
 
-    // Outgoing Transactions / Withdrawals / Debits
+    // Outgoing Transactions / Withdrawals / Debits / Transfers Sent
+    'you have successfully transferred',
     'you have transferred',
+    'successfully transferred',
     'transferred from',
+    'transferred out',
+    'you transferred',
+    'you have successfully paid',
+    'you have paid',
+    'successfully paid',
+    'you paid',
+    'payment to',
+    'you have sent',
+    'you sent',
+    'sent to',
     'debited',
-    'debit',
+    'has been debited',
+    'was debited',
+    'is debited',
     'withdrawn',
     'withdrew',
+    'withdrawal',
     'cash out',
+    'cashout',
+    'ተቀናሽ ተደርጓል',
     'ተቀናሽ ሆኗል',
+    'ተቀናሽ',
     'ወጪ ተደርጓል',
+    'ወጪ ሆኗል',
     'ወጪ',
+    'አስተላልፈዋል',
+    'በተሳካ ሁኔታ አስተላልፈዋል',
+    'ከሒሳብዎ ወጪ',
+    'ከፍለዋል',
+    'ልከዋል',
+    'ተልኳል',
+    'baasii',
+    'ergameera',
+    'kan kaffaltan',
 
     // Promo / Spam
     'congratulations you won',
     'lottery',
     'promo',
   ];
+
+  /// Checks if an SMS represents money leaving the account (debit/transfer out/withdrawal).
+  static bool isDebitOrOutgoing(String text) {
+    final lower = text.toLowerCase();
+
+    for (final bad in ignoredKeywords) {
+      if (lower.contains(bad)) return true;
+    }
+
+    final debitRegex = RegExp(
+      r'(?:'
+      r'you\s+have\s+(?:successfully\s+)?transferred|'
+      r'successfully\s+transferred|'
+      r'transferred\s+(?:[A-Za-z0-9,\.]+\s+)?from\s+(?:your\s+)?account|'
+      r'transferred\s+from|'
+      r'you\s+transferred|'
+      r'transferred\s+out|'
+      r'you\s+have\s+(?:successfully\s+)?paid|'
+      r'successfully\s+paid|'
+      r'you\s+paid|'
+      r'payment\s+to\b|'
+      r'you\s+have\s+sent|'
+      r'you\s+sent|'
+      r'sent\s+to\b|'
+      r'\bdebited\b|'
+      r'has\s+been\s+debited|'
+      r'account\s+debited|'
+      r'\bwithdrawn\b|'
+      r'\bwithdrew\b|'
+      r'\bwithdrawal\b|'
+      r'cash\s*out|'
+      r'airtime\s+bought|'
+      r'package\s+purchase|'
+      r'bought\s+package|'
+      r'recharge\s+successful|'
+      // Amharic
+      r'ወጪ\s*(?:ተደርጓል|ሆኗል)?|'
+      r'ከ(?:ሒሳብዎ|አካውንትዎ|አካውንት)\s*ወጪ|'
+      r'ተቀናሽ\s*(?:ተደርጓል|ሆኗል)?|'
+      r'አስተላልፈዋል|'
+      r'ከፍለዋል|'
+      r'ልከዋል|'
+      r'የአየር\s*ሰዓት|'
+      r'ፓኬጅ\s*ገዝተዋል|'
+      // Afaan Oromoo
+      r'\bbaasii\b|'
+      r'\bergameera\b|'
+      r'kan\s+kaffaltan'
+      r')',
+      caseSensitive: false,
+    );
+
+    return debitRegex.hasMatch(lower);
+  }
 
   /// Checks if an incoming SMS meets all security & business criteria.
   static bool shouldProcessSms({required String sender, required String body}) {
@@ -172,23 +238,20 @@ class SmsFilterConfig {
 
     if (b.isEmpty) return false;
 
-    // 1. REJECT if any ignore keyword is found
-    for (final bad in ignoredKeywords) {
-      if (b.contains(bad)) return false;
+    // 1. REJECT if any debit, outgoing transfer, OTP, airtime, or noise is detected
+    if (isDebitOrOutgoing(b)) {
+      return false;
     }
 
     // 2. CHECK SENDER MATCH
     final senderMatches = allowedSenders.any((allowed) => s.contains(allowed) || s == allowed);
+    final hasBankMention = allowedSenders.any((allowed) => b.contains(allowed));
 
-    // 3. CHECK CONTENT MATCH (In case sender is unknown number but body is signed by a bank)
-    final hasIncomingPhrase = incomingKeywords.any((kw) => b.contains(kw));
-
-    if (senderMatches) {
-      return hasIncomingPhrase;
+    if (!senderMatches && !hasBankMention) {
+      return false;
     }
 
-    // If sender wasn't matched directly, check if message is clearly signed by a recognized institution
-    final hasBankMention = allowedSenders.any((allowed) => b.contains(allowed));
-    return hasBankMention && hasIncomingPhrase;
+    // 3. MUST CONTAIN POSITIVE INCOMING CREDIT KEYWORD
+    return incomingKeywords.any((kw) => b.contains(kw));
   }
 }
