@@ -94,6 +94,19 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(false)
                 }
 
+                "shareText" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    val title = call.argument<String>("title") ?: "Share Shift Report"
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, text)
+                        type = "text/plain"
+                    }
+                    val shareIntent = Intent.createChooser(sendIntent, title)
+                    startActivity(shareIntent)
+                    result.success(true)
+                }
+
                 else -> result.notImplemented()
             }
         }
